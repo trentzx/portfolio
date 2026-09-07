@@ -1,0 +1,50 @@
+import fs from 'node:fs';
+let p='src/content.ts',s=fs.readFileSync(p,'utf8'); s=s.replace("portrait: null as string | null,", "portrait: './avatar-mii.png' as string | null,");fs.writeFileSync(p,s);
+p='src/Screen.tsx';s=fs.readFileSync(p,'utf8');s=s.replace("{type === 'about' && <><span", "{type === 'about' && p.portrait ? <img className=\"channel-avatar\" src={p.portrait} alt=\"\"/> : type === 'about' && <><span");fs.writeFileSync(p,s);
+p='src/main.tsx';s=fs.readFileSync(p,'utf8');
+s=s.replace(' const [sound,setSound] = useState(false);', ` const [sound,setSound] = useState(false);
+ const [power,setPower] = useState<'idle'|'charging'|'waking'>('idle');
+ const powerTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+ const cancelPower = useCallback(() => {powerTimers.current.forEach(clearTimeout);powerTimers.current=[];setPower('idle');},[]);
+ useEffect(() => () => powerTimers.current.forEach(clearTimeout),[]);`);
+s=s.replace(' const navigate = (path:string) => {chime(); go(path);};', ` const navigate = (path:string) => {
+  if (!entered && path === 'channels' && !reduced) {
+   if (power !== 'idle') return;
+   chime(); setIntro(false); setPower('charging');
+   motion.current.dragging=false; motion.current.vx=0;motion.current.vy=0;
+   void import('./Television');
+   powerTimers.current = [setTimeout(() => {setPower('waking');go('channels');},420),setTimeout(() => {setPower('idle');powerTimers.current=[];},1120)];
+   return;
+  }
+  cancelPower(); chime(); go(path);
+ };`);
+s=s.replace('const update = () => setRoute(validRoute());', 'const update = () => {setRoute(validRoute()); if(!location.hash) cancelPower();};');
+s=s.replace("if(e.key !== 'Escape') return;", "if(e.key !== 'Escape') return; if(power !== 'idle'){cancelPower();go('channels');return;}");
+s=s.replace('[route,go]);','[route,go,power,cancelPower]);');
+s=s.replace('active={entered}', "active={entered && power !== 'waking'}");
+s=s.replace("${flat ? 'is-flat' : ''}`}", "${flat ? 'is-flat' : ''} is-${power}`}");
+s=s.replace('<span className="header-middle">A PERSONAL PORTFOLIO, TUNED TO YOU.</span>', '{entered && <span className="header-middle">A PERSONAL PORTFOLIO, TUNED TO YOU.</span>}');
+let start=s.indexOf(' <main><div className="intro-copy">'),end=s.indexOf(' <section className="stage"',start);
+s=s.slice(0,start)+` <main>{entered ? <div className="intro-copy"><div className="eyebrow"><span/>YOU’RE ON THE RIGHT CHANNEL</div><h1>Make yourself at home.</h1><p>A collection of work, play, and everything in between.</p></div> : <h1 className="visually-hidden">Your personal portfolio. Press the Wii to begin.</h1>}
+`+s.slice(end);
+start=s.indexOf('<div className="stage-halo"/>');end=s.indexOf(' {flat ?',start);s=s.slice(0,start)+'<div className="stage-halo"/>\n'+s.slice(end);
+s=s.replace('reduced={reduced} mobile={mobile} onFailure=', "reduced={reduced} mobile={mobile} powering={power === 'charging'} onFailure=");
+s=s.replace('onPointerDown={e=>{e.currentTarget', "onPointerDown={e=>{if(power !== 'idle')return;e.currentTarget");
+s=s.replace('motion.current.dragging=false; e.currentTarget.releasePointerCapture(e.pointerId);', "if(power !== 'idle')return;motion.current.dragging=false; if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);");
+s=s.replace('Drag to rotate. There’s more to see.', 'Drag to explore');
+s=s.replace('<button className="primary enter-button"', '<button disabled={power !== \'idle\'} className="primary enter-button"');
+s=s.replace('Power on portfolio<ArrowRight size={19}/>', "{power === 'charging' ? 'Powering on…' : 'Press to start'}<ArrowRight size={16}/>");
+s=s.replace("'Click the console. Find your channel.'", "''");
+s=s.replace('Built with a little nostalgia & a lot of care.', 'A little nostalgia. A space of my own.');
+s=s.replace('<footer className="site-footer">', '<div className="visually-hidden" role="status">{power === \'charging\' ? \'Console powering on.\' : power === \'waking\' ? \'Television waking up.\' : \'\'}</div><footer className="site-footer">');
+fs.writeFileSync(p,s);
+p='src/Console.tsx';s=fs.readFileSync(p,'utf8');
+s=s.replace('ConsoleModel({motion,reduced,mobile}:{motion:MutableRefObject<MotionState>;reduced:boolean;mobile:boolean})','ConsoleModel({motion,reduced,mobile,powering}:{motion:MutableRefObject<MotionState>;reduced:boolean;mobile:boolean;powering:boolean})');
+s=s.replace('const group=useRef<THREE.Group>(null!);', 'const glow=useRef<THREE.MeshStandardMaterial>(null!); const glowTime=useRef(0); const group=useRef<THREE.Group>(null!);');
+s=s.replace('[invalidate,motion,size,reduced,mobile]', '[invalidate,motion,size,reduced,mobile,powering]');
+s=s.replace('if(!m.dragging){', 'if(powering){m.vx=0;m.vy=0;m.x=.06;m.y=-.40;} if(glow.current){glowTime.current=powering?Math.min(1,glowTime.current+dt*3):0;glow.current.emissiveIntensity=powering?2+glowTime.current*5:.35;} if(!m.dragging){');
+s=s.replace('||m.dragging)invalidate();', '||m.dragging||powering)invalidate();');
+s=s.replace('<meshStandardMaterial color="#68d5ff"', '<meshStandardMaterial ref={glow} color="#68d5ff"');
+s=s.replace('onFailure}:{motion:MutableRefObject<MotionState>;reduced:boolean;mobile:boolean;onFailure:()=>void}', 'onFailure,powering}:{motion:MutableRefObject<MotionState>;reduced:boolean;mobile:boolean;onFailure:()=>void;powering:boolean}');
+s=s.replace('<ConsoleModel motion={motion} reduced={reduced} mobile={mobile}/>', '<ConsoleModel motion={motion} reduced={reduced} mobile={mobile} powering={powering}/>{powering && <pointLight position={[-1,0,3]} color="#67cbff" intensity={2.5} distance={6}/>}');
+fs.writeFileSync(p,s);
