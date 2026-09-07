@@ -46,3 +46,75 @@
 @media(max-width:759px){.app:not(.is-entered) .site-header{height:65px;padding:18px 22px}.app:not(.is-entered):not(.is-flat) .stage{height:calc(100svh - 220px);min-height:340px;max-height:660px}.app:not(.is-entered) .site-footer{padding:12px 22px;gap:8px}.app:not(.is-entered) .site-footer>div{gap:8px}.app:not(.is-entered) .stage-actions{padding-bottom:18px}.app:not(.is-entered) .action-caption{right:18px;bottom:18px}.channel-avatar{height:125px;width:125px}.portrait-card>img{height:270px;object-fit:contain}}
 @media(prefers-reduced-motion:reduce){.is-charging .scene-transition,.is-waking .tv-screen{animation:none}.tile-about:hover .channel-avatar{transform:translateY(20px)}}
 .preview-about{background:#e4ebdf}.channel-avatar{width:100%;height:100%;object-fit:cover;object-position:center 25%;transform:none}.tile-about:hover .channel-avatar,.tile-about:focus-visible .channel-avatar{transform:scale(1.04)}.portrait-card{background:#e4ebdf}.portrait-card>img{object-fit:cover}
+.console-label{display:block;color:#899494;font:10px Arial,sans-serif;letter-spacing:.06em;text-align:center;white-space:nowrap}
+.app:not(.is-entered){position:fixed;inset:0;height:100svh;min-height:0;overflow:visible}
+.app:not(.is-entered) main{min-height:0}
+.app:not(.is-entered) .stage{flex:1;height:auto;min-height:0;max-height:none}
+.app:not(.is-entered) .stage-actions{flex:0 0 auto}
+.app:not(.is-entered) .site-footer{flex:0 0 auto}
+/* Keep the television and its controls inside the viewport. */
+.app.is-entered{position:fixed;inset:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.app.is-entered main{flex:1;min-height:0;display:flex;flex-direction:column}
+.app.is-entered .stage{flex:1;min-height:0;height:auto}
+.app.is-entered .site-header,.app.is-entered .site-footer,.app.is-entered .intro-copy,.app.is-entered .stage-actions{flex-shrink:0}
+.app.is-entered .site-header{padding:14px 4%}
+.app.is-entered .site-footer{padding:10px 4%}
+.app.is-entered .stage-actions{padding:4px 0}
+.app.is-entered .stage-actions{position:absolute;left:0;right:0;bottom:10px;margin:0;padding:0;background:transparent;border:0;pointer-events:none}
+.app.is-entered .stage-actions>*{pointer-events:auto}
+.crt-control{display:grid;place-items:center;width:72px;height:72px;padding:0;border:0;border-radius:50%;background:transparent;color:#424b42;font-size:40px;line-height:1}
+.crt-power{width:110px;height:110px;font-size:57px}
+.crt-control:hover{background:#ffffff30}
+.crt-control:active{background:#36473830}
+.flat-controls{display:flex;gap:8px;align-items:center}
+.flat-controls button{padding:0;width:32px;height:32px;border-radius:50%;background:#a4a89d;font-size:20px}
+.app.is-entered.is-flat .stage{display:flex;min-height:0}
+.app.is-entered .flat-tv{flex:1;min-height:0;max-width:940px;margin:8px auto;display:flex;flex-direction:column;padding-top:12px}
+.app.is-entered .flat-bezel{flex:1;min-height:0;display:flex}
+.app.is-entered .flat-tv .tv-screen{height:100%;min-height:0;border-radius:12px}
+.app.is-entered .flat-hardware{display:flex;flex-shrink:0;height:40px}
+.flat-tv .screen-header,.flat-tv .screen-footer{flex-shrink:0}
+.flat-tv .channel-grid{flex:1;min-height:0;grid-template-rows:repeat(2,minmax(0,1fr))}
+.flat-tv .channel-tile{display:flex;flex-direction:column;min-height:0}
+.flat-tv .preview{flex:1;min-height:0;height:auto;width:100%}
+.flat-tv .tile-label{flex-shrink:0;width:100%}
+.flat-tv .screen-caption{flex-shrink:0;padding:6px;margin:0}
+.app.is-entered .channel-body{min-height:0;overflow:auto}
+.app.is-entered .channel-body{overscroll-behavior:contain}
+.app.is-entered canvas{touch-action:none}
+body:has(.app.is-entered){overflow:hidden}
+.app.is-entered .stage{overflow:visible}
+.is-shutdown .glass-surface,.is-shutdown .flat-bezel{background:#172220}
+.is-shutdown .tv-screen{pointer-events:none;animation:crt-off .32s ease-in both}
+@keyframes crt-off{0%{transform:scale(1);filter:brightness(1)}60%{transform:scale(1,.008);filter:brightness(2)}100%{transform:scale(0,.004);opacity:0}}
+@media(max-width:759px){
+ .app.is-entered .site-header{padding:10px 18px}
+ .app.is-entered .intro-copy{padding:3px 12px}
+ .app.is-entered .intro-copy h1{font-size:23px;margin:5px}
+ .app.is-entered .intro-copy p{font-size:11px}
+ .app.is-entered .site-footer{padding:6px 12px;gap:4px}
+ .app.is-entered .sample-label{display:none}
+ .app.is-entered .flat-tv{margin:4px auto;padding:0 8px}
+ .flat-tv .channel-grid{grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;padding:6px 10px}
+ .flat-tv .screen-header{padding:10px 12px 4px}
+ .flat-tv .tile-label{padding:6px 10px}
+ .flat-tv .screen-footer{padding:4px 10px}
+}
+@media(max-height:650px){
+ .app.is-entered .intro-copy{display:none}
+ .app.is-entered .site-header{padding:6px 16px}
+ .app.is-entered .site-footer{padding:4px 12px}
+ .flat-tv .screen-header{padding:6px 12px}
+ .flat-tv .screen-header p,.flat-tv .screen-caption{display:none}
+ .flat-tv .tile-label{padding:4px 10px}
+}
+/* Stage controls stay content-sized so they never paint a panel over the Wii. */
+.stage-actions{background:transparent!important;box-shadow:none!important;border:0!important;min-height:0;height:auto}
+.app:not(.is-entered) .stage-actions{width:max-content;max-width:100%;margin-left:auto;margin-right:auto}
+.app:not(.is-entered) .site-footer{background:transparent!important;box-shadow:none!important;border:0!important}
+.app:not(.is-entered) .site-footer{backdrop-filter:none}
+.app.is-entered .site-footer{background:transparent;box-shadow:none;border:0}
+.app.is-entered .site-footer{position:relative;z-index:5}
+.app.is-entered .site-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.app.is-entered .site-footer>div{justify-self:end}
+.screen-caption::after{content:'Use − / + to tune';margin-left:10px;padding-left:10px;border-left:1px solid #b8c9c5;color:#71857b;font-size:11px}

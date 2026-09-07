@@ -1,7 +1,7 @@
 // All personal content lives here. Every entry below is a sample, not a real claim.
 // Put files in public/ and use paths like './resume.pdf' or './portrait.jpg'.
 export const portfolio = {
-  name: 'Your Name',
+  name: 'Trenton Scott',
   role: 'Designer, developer & curious human',
   tagline: 'A little nostalgia. A lot of possibility.',
   bio: 'I like turning thoughtful ideas into things people can use, feel, and enjoy. This is a space for my work, my experiments, and the things I’m figuring out along the way.',
@@ -9,9 +9,9 @@ export const portfolio = {
   portrait: './avatar-mii-final.png' as string | null,
   interests: ['Thoughtful interfaces', 'Creative coding', 'Old-school technology', 'Everyday discoveries'],
   skills: ['React', 'TypeScript', 'UI / UX design', 'Three.js', 'CSS', 'Prototyping'],
-  email: null as string | null,
-  github: null as string | null,
-  linkedin: null as string | null,
+  email: 'twscott06@gmail.com' as string | null,
+  github: 'https://github.com/trentzx' as string | null,
+  linkedin: 'https://www.linkedin.com/in/trentonscottx' as string | null,
   resume: null as string | null,
   resumeSummary: 'Add a short overview of your background, strengths, and the kind of work you want to do next.',
   projects: [
