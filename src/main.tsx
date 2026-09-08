@@ -5,6 +5,7 @@ import { Screen } from './Screen';
 import { channels, portfolio } from './content';
 import type { MotionState } from './Television';
 import './style.css';
+import './project-overrides.css';
 const Television = lazy(() => import('./Television'));
 const Console = lazy(() => import('./Console'));
 function validRoute() {const value = location.hash.slice(1); const [id, project] = value.split('/'); return id === 'channels' || (channels.some(c => c.id === id) && (!project || (id === 'projects' && portfolio.projects.some(p => p.id === project)))) ? value : '';}
@@ -29,17 +30,17 @@ function App() {
  const motion = useRef<MotionState>({x:.10,y:-.62,vx:0,vy:0,dragging:false,intro:initialIntro.current,wake:()=>{}});
  const pointer = useRef({x:0,y:0,startX:0,startY:0,moved:false});
  const go = useCallback((path:string) => { if(location.hash.slice(1) !== path) {if(path) location.hash = path; else {history.pushState(null,'',location.pathname+location.search); setRoute('');}} },[]);
- const chime = useCallback(() => {if(!sound) return; try {audio.current ||= new AudioContext(); void audio.current.resume(); const osc = audio.current.createOscillator(); const gain=audio.current.createGain(); osc.connect(gain); gain.connect(audio.current.destination); osc.type='sine'; osc.frequency.setValueAtTime(660,audio.current.currentTime); osc.frequency.exponentialRampToValueAtTime(880,audio.current.currentTime+.1); gain.gain.setValueAtTime(.035,audio.current.currentTime); gain.gain.exponentialRampToValueAtTime(.001,audio.current.currentTime+.18); osc.start(); osc.stop(audio.current.currentTime+.2);}catch {/* Audio is optional. */}},[sound]);
- const navigate = (path:string) => {
+ const playFx = useCallback((kind:'startup'|'select'|'navigate'|'off') => {if(!sound) return; try {audio.current ||= new AudioContext(); const ctx=audio.current; void ctx.resume(); const now=ctx.currentTime; const notes = kind==='startup' ? [[392,0,.08],[523,.08,.1],[784,.18,.22]] : kind==='off' ? [[660,0,.09],[440,.08,.1],[220,.18,.24]] : kind==='navigate' ? [[520,0,.06],[680,.06,.1]] : [[660,0,.07],[880,.07,.14]]; notes.forEach(([frequency,offset,duration])=>{const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type=kind==='off'?'sine':'triangle';osc.frequency.setValueAtTime(frequency,now+offset);osc.connect(gain);gain.connect(ctx.destination);gain.gain.setValueAtTime(.0001,now+offset);gain.gain.exponentialRampToValueAtTime(kind==='startup'?.045:.028,now+offset+.015);gain.gain.exponentialRampToValueAtTime(.0001,now+offset+duration);osc.start(now+offset);osc.stop(now+offset+duration+.02);});}catch {/* Audio is optional. */}},[sound]);
+ const navigate = (path:string, effect=true) => {
   if (!entered && path === 'channels' && !reduced) {
    if (power !== 'idle') return;
-   chime(); setIntro(false); setPower('charging');
+   playFx('startup'); setIntro(false); setPower('charging');
    motion.current.dragging=false; motion.current.vx=0;motion.current.vy=0;
    void import('./Television');
    powerTimers.current = [setTimeout(() => {setPower('waking');go('channels');},420),setTimeout(() => {setPower('idle');powerTimers.current=[];},1120)];
    return;
   }
-  cancelPower(); chime(); go(path);
+  cancelPower(); if(effect) playFx('select'); go(path);
  };
  useEffect(() => { const update = () => {setRoute(validRoute()); if(!location.hash) cancelPower();}; window.addEventListener('hashchange',update); window.addEventListener('popstate',update); return () => {window.removeEventListener('hashchange',update); window.removeEventListener('popstate',update);};},[]);
  useEffect(() => {const title = channels.find(c => c.id === route.split('/')[0])?.name; document.title = `${title || 'Signal'} — ${portfolio.name} · Portfolio`;},[route]);
@@ -48,14 +49,15 @@ function App() {
  const previousEntered = useRef(entered);
  useEffect(() => {if(previousEntered.current && !entered) {motion.current.x=.10;motion.current.y=-.62;motion.current.wake(); setTimeout(() => document.querySelector<HTMLButtonElement>('.enter-button')?.focus(),50);} previousEntered.current=entered;},[entered]);
  const turnOff = () => {
-  cancelPower(); chime();
+  cancelPower(); playFx('off');
   if(reduced){go('');return;}
   setPower('shutdown');
   powerTimers.current=[setTimeout(()=>{go('');setPower('idle');powerTimers.current=[];},320)];
  };
  const changeChannel = (step:number) => {
   const index=channels.findIndex(c=>c.id===route.split('/')[0]);
-  navigate(channels[index<0 ? (step>0 ? 0 : channels.length-1) : (index+step+channels.length)%channels.length].id);
+  playFx('navigate');
+  navigate(channels[index<0 ? (step>0 ? 0 : channels.length-1) : (index+step+channels.length)%channels.length].id, false);
  };
  const hardware = {onPower:turnOff,onPrevious:()=>changeChannel(-1),onNext:()=>changeChannel(1)};
  const flat = (mobile && entered) || !webgl || lite;
