@@ -4,6 +4,10 @@
   text-align: center;
 }
 
+.app.is-entered .header-middle {
+  transform: translateX(14px);
+}
+
 /* Keep the welcome message anchored to the top of the entry composition. */
 .app:not(.is-entered) main {
   justify-content: flex-start;
@@ -20,10 +24,129 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 14px;
-  background: #e9eeeb;
+  gap: 12px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, #f7faf6 0, #e9eeeb 62%, #dfe8e2 100%);
   color: #35473f;
   animation: boot-fade 420ms ease 1.1s both;
+}
+
+.boot-screen::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: repeating-linear-gradient(0deg, transparent 0 5px, #526b5d08 5px 6px);
+  content: '';
+  pointer-events: none;
+}
+
+.boot-console {
+  position: relative;
+  width: 58px;
+  height: 96px;
+  margin-bottom: 3px;
+  border: 2px solid #b7c5bd;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #e0e8e3, #fff 45%, #e7efea);
+  box-shadow: 16px 8px 0 #cbd7d0, 0 16px 28px #526b5d1c;
+  transform: skewY(-7deg) rotate(-5deg);
+}
+
+.boot-disc-stage { position: relative; width: 258px; height: 258px; margin: 0 auto; }
+
+.boot-disc {
+  position: absolute;
+  top: 0;
+  width: 220px;
+  height: 220px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  animation: disc-spin 1.35s linear infinite;
+}
+
+.boot-disc::after {
+  width: 31px;
+  height: 31px;
+  border: 5px solid #dce5df;
+  border-radius: 50%;
+  background: #eef3ee;
+  box-shadow: inset 0 0 0 9px #c4d0c8;
+  content: '';
+}
+
+.boot-disc span {
+  position: absolute;
+  z-index: 1;
+  top: 94px;
+  font-size: 12px;
+  opacity: .72;
+}
+
+.boot-disc-wii {
+  left: 54px;
+  background: radial-gradient(circle at 38% 30%, #76d3f1 0 10%, transparent 11%), #5fc4eb;
+  color: white;
+  border: 3px solid #b9d8df;
+  box-shadow: 0 12px 18px #657d7135, inset 0 0 0 2px #fff8;
+}
+
+.boot-disc-gamecube {
+  right: 54px;
+  background: linear-gradient(#4b6397 0 57%, #17151b 57% 100%);
+  color: #f4eff9;
+  border: 3px solid #bdc4ca;
+  animation-duration: 1.05s;
+  box-shadow: 0 8px 14px #55406f35;
+}
+
+.boot-disc-gamecube::after {
+  border-color: #856ca3;
+  background: #70558f;
+  box-shadow: inset 0 0 0 7px #bca5d0;
+}
+
+.boot-disc-gamecube span { top: 144px; bottom: auto; }
+
+.boot-disc-wii span::after { content: 'Nintendo'; display: block; margin-top: 3px; font-size: 5px; letter-spacing: .4px; }
+.boot-disc-gamecube span::before { content: 'NINTENDO '; }
+.boot-disc-gamecube span { font-size: 7px; letter-spacing: 1px; }
+
+.boot-console {
+  z-index: 2;
+  position: absolute;
+  left: 76px;
+  top: 3px;
+  transform: skewY(-7deg) rotate(-5deg) scale(.86);
+}
+
+.boot-console-light,
+.boot-console-slot {
+  position: absolute;
+  display: block;
+}
+
+.boot-console-light {
+  top: 10px;
+  left: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #82ba94;
+  box-shadow: 0 0 7px #82ba94;
+}
+
+.boot-console-slot {
+  top: 25px;
+  left: 31px;
+  width: 4px;
+  height: 52px;
+  border: 1px solid #71c9e7;
+  background: #314c56;
+  box-shadow: 0 0 8px #62cbf6;
 }
 
 .boot-mark {
@@ -36,8 +159,35 @@
 }
 
 .boot-screen p {
-  margin: 4px 0 2px;
+  margin: 2px 0 4px;
   font-size: 15px;
+}
+
+.boot-screen p { color: #505655; font-size: 20px; }
+
+/* These are the supplied reference plates, so their labels and artwork stay exact. */
+.boot-disc-stage .boot-disc {
+  display: block;
+  border: 0;
+  background-position: -514px 0;
+  background-size: 772px 427px;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  box-shadow: none;
+  border-radius: 0;
+  animation: disc-spin .7s linear infinite;
+  clip-path: circle(49%);
+}
+
+.boot-disc-stage .boot-disc::after,
+.boot-disc-stage .boot-disc span { display: none; }
+
+.boot-disc-stage .boot-disc-wii {
+  left: 0;
+  top: 0;
+  width: 258px;
+  height: 258px;
+  background-image: url('/disc-sprites.png');
 }
 
 .boot-progress {
@@ -63,9 +213,22 @@
   letter-spacing: 2px;
 }
 
+.boot-meta {
+  display: flex;
+  justify-content: space-between;
+  width: 150px;
+  color: #819086;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
 @keyframes boot-progress {
   from { transform: translateX(-150px); }
   to { transform: translateX(210px); }
+}
+
+@keyframes disc-spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes boot-fade {
@@ -102,6 +265,7 @@
   .channel-content { animation: none; }
   .channel-body { scroll-behavior: auto; }
   .boot-screen { display: none; }
+  .boot-disc { animation: none; }
 }
 
 .project-card img {
@@ -233,6 +397,10 @@
 }
 
 @media (max-width: 759px) {
+  .app.is-entered .header-middle {
+    transform: none;
+  }
+
   .project-card img {
     height: 96px;
   }
