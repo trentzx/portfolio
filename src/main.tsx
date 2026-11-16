@@ -104,9 +104,38 @@ export default function App() {
         </Section>
 
         <Section title="projects">
-          {projects.map(p => (
+          {projects.map(p => {
+            const icon = (
+              <img
+                className={`row-icon ${p.tile ? 'tiled' : ''}`}
+                src={p.icon}
+                alt=""
+                width={30}
+                height={30}
+                loading="lazy"
+              />
+            );
+            // Prefer the live site over the repo when a project has both.
+            const iconHref = p.demo ?? p.source;
+            return (
             <li key={p.id} className="row">
-              <img className="row-icon" src={p.icon} alt="" width={30} height={30} loading="lazy" />
+              {iconHref ? (
+                /* Redundant with the action icons on the right, so it's kept out
+                   of the tab order and the accessibility tree rather than
+                   announcing the same destination twice. */
+                <a
+                  className="row-icon-link"
+                  href={iconHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                >
+                  {icon}
+                </a>
+              ) : (
+                icon
+              )}
               <div className="row-main">
                 <div className="row-title">
                   <strong>{p.title}</strong>
@@ -133,7 +162,8 @@ export default function App() {
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </Section>
 
         <footer className="foot">

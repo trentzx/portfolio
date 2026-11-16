@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="tracekit logo: a cascading call trace">
-  <rect width="128" height="128" rx="28" fill="#0d1117"/>
-  <g stroke-width="12" stroke-linecap="round" fill="none">
-    <path d="M30 40h68" stroke="#7ee787"/>
-    <path d="M46 64h52" stroke="#3fb950"/>
-    <path d="M62 88h36" stroke="#238636"/>
+  <g stroke-width="15" stroke-linecap="round" fill="none">
+    <path d="M20 32h88" stroke="#1a7f37"/>
+    <path d="M40 64h68" stroke="#2da44e"/>
+    <path d="M60 96h48" stroke="#4ac26b"/>
   </g>
 </svg>

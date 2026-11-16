@@ -228,26 +228,59 @@ body::before {
   display: flex;
   align-items: flex-start;
   gap: 11px;
-  padding: 9px 0;
+  padding: 9px 8px;
+  margin-inline: -8px;
+  border-radius: 10px;
   border-top: 1px solid var(--rule);
+  transition: background-color 0.2s;
+}
+
+/* Hovering anywhere on the row lights it up; focus-within keeps the same
+   affordance for keyboard users tabbing through the action links. */
+.row:hover,
+.row:focus-within {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .row:first-child {
   border-top: 0;
 }
 
-/*
- * The mark SVGs already draw their own rounded tile (160x160, rx 32), so this
- * only adds the gloss ring and drop shadow on top. Padding or a second
- * background here would double-frame them and shrink the glyph.
- */
+.row-icon-link {
+  flex: none;
+  display: flex;
+  margin-top: 2px;
+}
+
 .row-icon {
   flex: none;
   margin-top: 2px;
+  /* Faiz's easing: a fast lift that settles rather than bouncing. */
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.row-icon-link .row-icon {
+  margin-top: 0;
+}
+
+/*
+ * Only logos that draw their own background get the gloss ring and shadow.
+ * On a transparent mark they would outline empty space.
+ */
+.row-icon.tiled {
   border-radius: 7px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
     0 1px 3px rgba(16, 68, 92, 0.24);
+}
+
+.row:hover .row-icon,
+.row:focus-within .row-icon {
+  transform: translateY(-1px) rotate(-3deg) scale(1.04);
+}
+
+.row-icon-link:hover {
+  cursor: pointer;
 }
 
 .row-main {
@@ -425,5 +458,15 @@ body::before {
 
   .bubbles {
     display: none;
+  }
+
+  /* Keep the row tint as the hover affordance, drop the icon movement. */
+  .row-icon {
+    transition: none;
+  }
+
+  .row:hover .row-icon,
+  .row:focus-within .row-icon {
+    transform: none;
   }
 }

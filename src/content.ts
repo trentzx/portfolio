@@ -66,6 +66,8 @@ export const projects: {
   stats: string | null;
   tech: string[];
   icon: string;
+  /** True when the logo draws its own background tile; false for transparent marks. */
+  tile: boolean;
   badge: Badge;
   source: string | null;
   demo: string | null;
@@ -77,6 +79,7 @@ export const projects: {
     stats: '867 professors · 9,000+ publications · 500+ users',
     tech: ['react', 'typescript', 'supabase', 'openalex'],
     icon: './research-finder-mark.png',
+    tile: true,
     badge: null,
     source: null, // private repo
     // web-trnt.vercel.app sits behind Vercel Deployment Protection: it answers
@@ -91,6 +94,7 @@ export const projects: {
     stats: 'shipped via homebrew and winget',
     tech: ['rust', 'cli'],
     icon: './polysh-mark.svg',
+    tile: true,
     badge: null,
     source: 'https://github.com/trentzx/polysh',
     demo: 'https://trentzx.github.io/polysh/',
@@ -102,6 +106,7 @@ export const projects: {
     stats: null,
     tech: ['c++', 'yosys', 'sat solving'],
     icon: './limit-mark.svg',
+    tile: true,
     badge: null,
     source: null, // private repo
     demo: null,
@@ -113,6 +118,7 @@ export const projects: {
     stats: '300 automated tests · 3 cli tools · desktop overlay',
     tech: ['python', 'sys.monitoring', 'tkinter'],
     icon: './tracekit-mark.svg',
+    tile: false,
     badge: null,
     source: 'https://github.com/trentzx/tracekit',
     demo: null,
@@ -124,6 +130,7 @@ export const projects: {
     stats: 'dijkstra routing · step-free mode · 53 automated tests',
     tech: ['next.js', 'typescript', 'prisma', 'postgresql'],
     icon: './campusscan-mark.svg',
+    tile: false,
     badge: null,
     source: null, // private repo
     demo: null,
@@ -135,6 +142,7 @@ export const projects: {
     stats: null,
     tech: ['vhdl', 'xilinx vivado'],
     icon: './riscv-mark.svg',
+    tile: false,
     badge: 'wip',
     source: null,
     demo: null,
