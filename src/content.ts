@@ -52,13 +52,6 @@ export const work: {
     badge: null,
     icon: null,
   },
-  {
-    org: 'centre wellington dhs',
-    role: 'computer engineering teaching assistant (co-op)',
-    dates: '2022 – 2023',
-    badge: null,
-    icon: null,
-  },
 ];
 
 /*
@@ -86,7 +79,10 @@ export const projects: {
     icon: './research-finder-mark.svg',
     badge: null,
     source: null, // private repo
-    demo: 'https://web-trnt.vercel.app',
+    // web-trnt.vercel.app sits behind Vercel Deployment Protection: it answers
+    // 200 but redirects to a Vercel login wall, so it is not a public site.
+    // Turn that protection off and this becomes `demo: 'https://web-trnt.vercel.app'`.
+    demo: null,
   },
   {
     id: 'polysh',
