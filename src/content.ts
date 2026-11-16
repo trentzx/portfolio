@@ -82,10 +82,7 @@ export const projects: {
     tile: true,
     badge: null,
     source: null, // private repo
-    // web-trnt.vercel.app sits behind Vercel Deployment Protection: it answers
-    // 200 but redirects to a Vercel login wall, so it is not a public site.
-    // Turn that protection off and this becomes `demo: 'https://web-trnt.vercel.app'`.
-    demo: null,
+    demo: 'https://guelph-research-finder.vercel.app/',
   },
   {
     id: 'polysh',
