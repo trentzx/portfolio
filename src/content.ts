@@ -76,7 +76,7 @@ export const projects: {
     blurb: 'search tool that helps guelph students find professors by research area, built on a pipeline that matched 524 professors to open publication records',
     stats: '867 professors · 9,000+ publications · 500+ users',
     tech: ['react', 'typescript', 'supabase', 'openalex'],
-    icon: './research-finder-mark.svg',
+    icon: './research-finder-mark.png',
     badge: null,
     source: null, // private repo
     // web-trnt.vercel.app sits behind Vercel Deployment Protection: it answers
