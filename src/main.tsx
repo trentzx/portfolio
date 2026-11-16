@@ -113,6 +113,7 @@ export default function App() {
                   <Pill kind={p.badge} />
                 </div>
                 <div className="row-sub">{p.blurb}</div>
+                {p.stats && <div className="row-stats">{p.stats}</div>}
                 <div className="row-tech">
                   {p.tech.map(t => (
                     <span key={t}>{t}</span>

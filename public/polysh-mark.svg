@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="polysh logo">
+  <rect width="512" height="512" rx="116" fill="#0b0d12"/>
+  <g fill="none" stroke-width="46" stroke-linecap="round">
+    <path d="M142 170 L254 256" stroke="#5eb1ff"/>
+    <path d="M254 256 L142 342" stroke="#7ee787"/>
+    <path d="M286 342 H370" stroke="#f0f3f6"/>
+  </g>
+</svg>

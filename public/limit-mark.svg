@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Limit logo: a chip with a padlock">
+  <rect width="128" height="128" rx="28" fill="#10151d"/>
+  <g stroke="#e6edf3" stroke-width="5" stroke-linecap="round" fill="none">
+    <rect x="34" y="34" width="60" height="60" rx="9"/>
+    <path d="M49 34V22M64 34V22M79 34V22M49 106V94M64 106V94M79 106V94M34 49H22M34 64H22M34 79H22M106 49H94M106 64H94M106 79H94"/>
+  </g>
+  <path d="M55 63v-6a9 9 0 0 1 18 0v6" stroke="#f0b429" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <rect x="49" y="61" width="30" height="23" rx="4" fill="#f0b429"/>
+  <circle cx="64" cy="70.5" r="3.2" fill="#10151d"/>
+  <rect x="62.4" y="71" width="3.2" height="7" rx="1.2" fill="#10151d"/>
+</svg>

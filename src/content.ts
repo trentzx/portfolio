@@ -5,9 +5,9 @@ export const profile = {
   avatar: './avatar-mii-final.png',
   location: 'guelph, ontario',
   // Rendered as one sentence. `chip` pulls an icon in beside the word, faizm-style.
-  bio: 'i study computer engineering @ guelph, build across the hardware-software line, and spend my spare cycles on computer vision, local-first tools and security.',
+  bio: 'i study computer engineering @ guelph and build across the hardware-software line, from developer tooling and search to rtl security and a risc-v core.',
   email: 'twscott06@gmail.com',
-  resume: './trentonscott_resume_s2026.pdf',
+  resume: './trentonscott_cv.pdf',
 };
 
 export const links = [
@@ -19,7 +19,7 @@ export const links = [
 export const nav = [
   { label: 'work', href: '#work' },
   { label: 'projects', href: '#projects' },
-  { label: 'résumé', href: './trentonscott_resume_s2026.pdf' },
+  { label: 'résumé', href: './trentonscott_cv.pdf' },
 ];
 
 export type Badge = 'current' | 'wip' | null;
@@ -32,32 +32,45 @@ export const work: {
   icon: string | null;
 }[] = [
   {
+    org: 'bioacuity consulting',
+    role: 'student consultant · supplier selection & regulatory deliverables',
+    dates: 'jul 2026 – present',
+    badge: 'current',
+    icon: null,
+  },
+  {
     org: 'university of guelph',
-    role: 'computer engineering, third year',
+    role: 'bachelor of computer engineering · expected apr 2028',
     dates: '2024 – present',
     badge: 'current',
     icon: null,
   },
   {
     org: 'cybertitan',
-    role: 'national finalist · team lead',
+    role: 'cybersecurity team lead · 12th in canada',
     dates: '2023 – 2024',
     badge: null,
     icon: null,
   },
   {
-    org: 'independent projects',
-    role: 'computer vision, developer tooling, embedded, local ai',
-    dates: 'always',
+    org: 'centre wellington dhs',
+    role: 'computer engineering teaching assistant (co-op)',
+    dates: '2022 – 2023',
     badge: null,
     icon: null,
   },
 ];
 
+/*
+ * Link rule: private repo with a live site links to the site only; a public
+ * repo with a site links to both; a public repo on its own links to the repo.
+ * Anything private with no site carries no link rather than a 404.
+ */
 export const projects: {
   id: string;
   title: string;
   blurb: string;
+  stats: string | null;
   tech: string[];
   icon: string;
   badge: Badge;
@@ -65,65 +78,71 @@ export const projects: {
   demo: string | null;
 }[] = [
   {
-    id: 'myswing',
-    title: 'myswing',
-    blurb: 'a golf swing analyzer that turns down-the-line video into tempo ratio, head stability and spine tilt',
-    tech: ['python', 'mediapipe', 'opencv'],
-    icon: './myswing-mark.svg',
-    badge: 'wip',
-    source: 'https://github.com/trentzx/MYSWING',
-    demo: null,
-  },
-  {
-    id: 'focusbase',
-    title: 'focusbase',
-    blurb: 'a local-first dashboard that folds tasks, calendar, syllabi and pull requests into one clear next step',
-    tech: ['react', 'vite', 'ollama'],
-    icon: './focusbase-mark.svg',
+    id: 'research-finder',
+    title: 'guelph research finder',
+    blurb: 'search tool that helps guelph students find professors by research area, built on a pipeline that matched 524 professors to open publication records',
+    stats: '867 professors · 9,000+ publications · 500+ users',
+    tech: ['react', 'typescript', 'supabase', 'openalex'],
+    icon: './research-finder-mark.svg',
     badge: null,
-    source: 'https://github.com/trentzx/focusbase',
-    demo: null,
+    source: null, // private repo
+    demo: 'https://web-trnt.vercel.app',
   },
   {
-    id: 'git-cracked',
-    title: 'git-cracked',
-    blurb: 'a cross-platform local scheduler for git automation, with a cli, dashboard and catch-up runs. no api keys',
-    tech: ['node.js', 'cli', 'node-cron'],
-    icon: './git-cracked-mark.svg',
+    id: 'polysh',
+    title: 'polysh',
+    blurb: 'one shell, every dialect: type windows cmd or linux commands and polysh translates them, flags included, for the os you are actually on',
+    stats: 'shipped via homebrew and winget',
+    tech: ['rust', 'cli'],
+    icon: './polysh-mark.svg',
     badge: null,
-    source: 'https://github.com/trentzx/git-cracked',
+    source: 'https://github.com/trentzx/polysh',
+    demo: 'https://trentzx.github.io/polysh/',
+  },
+  {
+    id: 'limit',
+    title: 'limit',
+    blurb: 'a yosys plugin that finds security bugs in verilog and systemverilog nobody maintains any more, backed by sat proofs and mapped to mitre hardware cwes',
+    stats: null,
+    tech: ['c++', 'yosys', 'sat solving'],
+    icon: './limit-mark.svg',
+    badge: null,
+    source: null, // private repo
     demo: null,
   },
   {
-    id: 'mycampus',
-    title: 'mycampus',
-    blurb: 'crowd-built indoor campus navigation: a room graph, dijkstra routing, step-free mode and 360° visual routes',
-    tech: ['dijkstra', '360° imagery'],
-    icon: './mycampus-mark.svg',
-    badge: 'wip',
-    source: null,
+    id: 'tracekit',
+    title: 'tracekit',
+    blurb: 'a python debugging tool with no outside dependencies that records what a program does as it runs: calls, inputs, timing and errors',
+    stats: '300 automated tests · 3 cli tools · desktop overlay',
+    tech: ['python', 'sys.monitoring', 'tkinter'],
+    icon: './tracekit-mark.svg',
+    badge: null,
+    source: 'https://github.com/trentzx/tracekit',
     demo: null,
   },
   {
-    id: 'tokenpet',
-    title: 'tokenpet',
-    blurb: 'a virtual pet that grows on your ai-coding habit, fed by a local engine that streams token deltas live',
-    tech: ['typescript', 'node.js'],
-    icon: './tokenpet-mark.svg',
-    badge: 'wip',
-    source: 'https://github.com/trentzx/tokenpet',
+    id: 'campusscan',
+    title: 'campusscan',
+    blurb: 'indoor navigation that guides people to rooms in unfamiliar buildings with photo-by-photo directions through corridors, stairs and elevators',
+    stats: 'dijkstra routing · step-free mode · 53 automated tests',
+    tech: ['next.js', 'typescript', 'prisma', 'postgresql'],
+    icon: './campusscan-mark.svg',
+    badge: null,
+    source: null, // private repo
     demo: null,
   },
   {
-    id: 'newt',
-    title: 'newt',
-    blurb: 'an mcp server that renders solved physics problems as handwritten notebook pages inside claude',
-    tech: ['mcp', 'image rendering'],
-    icon: './newt-mark.svg',
+    id: 'riscv',
+    title: 'risc-v processor',
+    blurb: 'a 32-bit risc-v processor in vhdl, built from the ground up: register file, 32-bit alu and instruction decoder, each stage verified against risc-v test programs',
+    stats: null,
+    tech: ['vhdl', 'xilinx vivado'],
+    icon: './riscv-mark.svg',
     badge: 'wip',
     source: null,
     demo: null,
   },
 ];
 
-export const version = 'v2.0.0';
+export const version = 'v2.1.0';
