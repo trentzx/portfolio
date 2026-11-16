@@ -1,78 +1,149 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, ArrowRight, ArrowUpRight, MoveHorizontal, RotateCcw, Tv, Volume2, VolumeX } from 'lucide-react';
-import { Screen } from './Screen';
-import { channels, portfolio } from './content';
-import type { MotionState } from './Television';
+import { Github, Globe } from 'lucide-react';
+import { links, nav, profile, projects, version, work, type Badge } from './content';
 import './style.css';
-import './project-overrides.css';
-const Television = lazy(() => import('./Television'));
-const Console = lazy(() => import('./Console'));
-function validRoute() {const value = location.hash.slice(1); const [id, project] = value.split('/'); return id === 'channels' || (channels.some(c => c.id === id) && (!project || (id === 'projects' && portfolio.projects.some(p => p.id === project)))) ? value : '';}
-function useMedia(query:string) {const [value, set] = useState(() => matchMedia(query).matches); useEffect(() => { const media = matchMedia(query); const change = () => set(media.matches); media.addEventListener('change',change); return () => media.removeEventListener('change',change);},[query]); return value;}
-function supportsWebGL() {try {const c = document.createElement('canvas'); const gl = c.getContext('webgl2'); if (!gl) return false; gl.getExtension('WEBGL_lose_context')?.loseContext(); return true;}catch {return false;}}
-class SceneBoundary extends Component<{children:React.ReactNode;fallback:React.ReactNode},{failed:boolean}> {state={failed:false}; static getDerivedStateFromError(){return {failed:true};} render(){return this.state.failed ? this.props.fallback : this.props.children;}}
-function App() {
- const [route,setRoute] = useState(validRoute);
- const entered = !!route;
- const mobile = useMedia('(max-width: 759px)');
- const reduced = useMedia('(prefers-reduced-motion: reduce)');
- const [webgl,setWebgl] = useState(supportsWebGL);
- const [lite,setLite] = useState(false);
- const [sound,setSound] = useState(false);
- const [power,setPower] = useState<'idle'|'charging'|'waking'|'shutdown'>('idle');
- const powerTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
- const cancelPower = useCallback(() => {powerTimers.current.forEach(clearTimeout);powerTimers.current=[];setPower('idle');},[]);
- useEffect(() => () => powerTimers.current.forEach(clearTimeout),[]);
- const audio = useRef<AudioContext | null>(null);
- const initialIntro = useRef(!entered);
- const [intro,setIntro] = useState(initialIntro.current && !entered && !reduced);
- const [booting,setBooting] = useState(initialIntro.current && !entered && !reduced);
- const motion = useRef<MotionState>({x:.10,y:-.62,vx:0,vy:0,dragging:false,intro:initialIntro.current,wake:()=>{}});
- const pointer = useRef({x:0,y:0,startX:0,startY:0,moved:false});
- const go = useCallback((path:string) => { if(location.hash.slice(1) !== path) {if(path) location.hash = path; else {history.pushState(null,'',location.pathname+location.search); setRoute('');}} },[]);
- const playFx = useCallback((kind:'startup'|'select'|'navigate'|'off') => {if(!sound) return; try {audio.current ||= new AudioContext(); const ctx=audio.current; void ctx.resume(); const now=ctx.currentTime; const notes = kind==='startup' ? [[392,0,.08],[523,.08,.1],[784,.18,.22]] : kind==='off' ? [[660,0,.09],[440,.08,.1],[220,.18,.24]] : kind==='navigate' ? [[520,0,.06],[680,.06,.1]] : [[660,0,.07],[880,.07,.14]]; notes.forEach(([frequency,offset,duration])=>{const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type=kind==='off'?'sine':'triangle';osc.frequency.setValueAtTime(frequency,now+offset);osc.connect(gain);gain.connect(ctx.destination);gain.gain.setValueAtTime(.0001,now+offset);gain.gain.exponentialRampToValueAtTime(kind==='startup'?.045:.028,now+offset+.015);gain.gain.exponentialRampToValueAtTime(.0001,now+offset+duration);osc.start(now+offset);osc.stop(now+offset+duration+.02);});}catch {/* Audio is optional. */}},[sound]);
- const navigate = (path:string, effect=true) => {
-  if (!entered && path === 'channels' && !reduced) {
-   if (power !== 'idle') return;
-   playFx('startup'); setIntro(false); setPower('charging');
-   motion.current.dragging=false; motion.current.vx=0;motion.current.vy=0;
-   void import('./Television');
-   powerTimers.current = [setTimeout(() => {setPower('waking');go('channels');},420),setTimeout(() => {setPower('idle');powerTimers.current=[];},1120)];
-   return;
-  }
-  cancelPower(); if(effect) playFx('select'); go(path);
- };
- useEffect(() => { const update = () => {setRoute(validRoute()); if(!location.hash) cancelPower();}; window.addEventListener('hashchange',update); window.addEventListener('popstate',update); return () => {window.removeEventListener('hashchange',update); window.removeEventListener('popstate',update);};},[]);
- useEffect(() => {const title = channels.find(c => c.id === route.split('/')[0])?.name; document.title = `${title || 'Signal'} — ${portfolio.name} · Portfolio`;},[route]);
- useEffect(() => {try{sessionStorage.setItem('signal-intro','1');}catch{/* Storage may be unavailable. */} const timer = setTimeout(() => {setIntro(false);setBooting(false);},1500); return () => {clearTimeout(timer); void audio.current?.close();};},[]);
- useEffect(() => {const escape = (e:KeyboardEvent) => {if(e.key !== 'Escape') return; if(power !== 'idle'){cancelPower();go('channels');return;} if(route.includes('/')) go('projects'); else if(route && route !== 'channels') go('channels'); else if(route) go('');}; window.addEventListener('keydown',escape); return () => window.removeEventListener('keydown',escape);},[route,go,power,cancelPower]);
- const previousEntered = useRef(entered);
- useEffect(() => {if(previousEntered.current && !entered) {motion.current.x=.10;motion.current.y=-.62;motion.current.wake(); setTimeout(() => document.querySelector<HTMLButtonElement>('.enter-button')?.focus(),50);} previousEntered.current=entered;},[entered]);
- const turnOff = () => {
-  cancelPower(); playFx('off');
-  if(reduced){go('');return;}
-  setPower('shutdown');
-  powerTimers.current=[setTimeout(()=>{go('');setPower('idle');powerTimers.current=[];},320)];
- };
- const changeChannel = (step:number) => {
-  const index=channels.findIndex(c=>c.id===route.split('/')[0]);
-  playFx('navigate');
-  navigate(channels[index<0 ? (step>0 ? 0 : channels.length-1) : (index+step+channels.length)%channels.length].id, false);
- };
- const hardware = {onPower:turnOff,onPrevious:()=>changeChannel(-1),onNext:()=>changeChannel(1)};
- const flat = (mobile && entered) || !webgl || lite;
- const screen = <Screen route={route} go={navigate} sound={sound} toggleSound={() => setSound(v=>!v)} active={entered && power !== 'waking' && power !== 'shutdown'}/>;
- const flatTV = <div className={`flat-tv ${entered ? 'flat-entered' : ''}`}><div className="flat-bezel">{screen}</div><div className="flat-hardware"><div className="flat-speaker"/><span>signal</span><div className="flat-controls"><button aria-label="Previous channel" onClick={hardware.onPrevious}>−</button><button aria-label="Next channel" onClick={hardware.onNext}>+</button><button aria-label="Turn off TV and return to Wii" onClick={turnOff}>⏻</button></div><b/></div></div>;
- const flatConsole = <button className="flat-console-launch" onClick={() => navigate('channels')} aria-label="Turn on console and enter portfolio"><span className="flat-console"><i className="console-slot"/><i className="console-power"/><span>wii</span></span><span className="console-stand"/></button>;
- return <div className={`app ${entered ? 'is-entered' : ''} ${flat ? 'is-flat' : ''} is-${power}`}><a className="skip-link" href="#channels">Skip to portfolio</a>{booting && <div className="boot-screen" role="status" aria-label="Loading"><div className="boot-disc-stage" aria-hidden="true"><div className="boot-disc boot-disc-wii"/></div></div>}<header className="site-header"><a className="brand" href="#" aria-label="Signal home" onClick={e=>{e.preventDefault();go('');}}><span className="brand-icon"><Tv size={19}/></span>signal<span className="brand-dot">®</span></a>{entered && <span className="header-middle">A PERSONAL PORTFOLIO, TUNED TO YOU.</span>}<button className="header-contact" onClick={()=>navigate('contact')}>Say hello<ArrowUpRight size={16}/></button></header>
- <main>{entered ? <div className="intro-copy"><div className="eyebrow"><span/>YOU’RE ON THE RIGHT CHANNEL</div><h1>Make yourself at home.</h1><p>A collection of work, play, and everything in between.</p></div> : <h1 className="visually-hidden">Your personal portfolio. Press the Wii to begin.</h1>}
- <section className="stage" aria-label={entered ? "CRT television portfolio" : "Interactive Wii-style console"}><div className="stage-halo"/>
- {flat ? (entered ? flatTV : flatConsole) : <SceneBoundary fallback={entered ? flatTV : flatConsole}><Suspense fallback={<div className="scene-loading"><Tv/>Tuning in…<button onClick={()=>setLite(true)}>Open lightweight view</button></div>}><div className="scene-transition" key={entered ? "crt" : "console"}>{entered ? <Television {...hardware} entered={entered} motion={motion} reduced={reduced} onFailure={()=>setWebgl(false)}>{screen}</Television> : <Console motion={motion} reduced={reduced} mobile={mobile} powering={power === 'charging'} onFailure={()=>setWebgl(false)}/>}</div></Suspense></SceneBoundary>}
- {!entered && !flat && <div className="drag-surface" role="group" tabIndex={0} aria-label="Rotate Wii-style console. Drag or use arrow keys. Press Enter to turn on the CRT portfolio." onPointerDown={e=>{if(power !== 'idle')return;e.currentTarget.setPointerCapture(e.pointerId); const m=motion.current; m.dragging=true;m.vx=0;m.vy=0;pointer.current={x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,moved:false};setIntro(false);m.wake();}} onPointerMove={e=>{if(!motion.current.dragging)return; const prev=pointer.current; const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.hypot(e.clientX-prev.startX,e.clientY-prev.startY)>6)prev.moved=true; if(prev.moved){motion.current.y+=dx*.009;motion.current.x=Math.max(-.55,Math.min(.55,motion.current.x+dy*.005));motion.current.vy=dx*.0018;motion.current.vx=dy*.001;motion.current.wake();}prev.x=e.clientX;prev.y=e.clientY;}} onPointerUp={e=>{if(power !== 'idle')return;motion.current.dragging=false; if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);motion.current.wake();if(!pointer.current.moved)navigate('channels');}} onPointerCancel={()=>{motion.current.dragging=false;motion.current.vx=0;motion.current.vy=0;}} onKeyDown={e=>{if(e.key==='Enter'){navigate('channels');return;} const m=motion.current; if(e.key.startsWith('Arrow')){e.preventDefault(); if(e.key==='ArrowLeft')m.y-=.3;if(e.key==='ArrowRight')m.y+=.3;if(e.key==='ArrowUp')m.x=Math.max(-.55,m.x-.15);if(e.key==='ArrowDown')m.x=Math.min(.55,m.x+.15);m.wake();}}}/>}</section>
- <div className="stage-actions">{entered ? null : <><div className="rotate-hint">{!flat ? <><MoveHorizontal size={17}/><span>Drag to explore</span><button aria-label="Reset console rotation" onClick={()=>{motion.current.x=.10;motion.current.y=-.62;motion.current.vx=0;motion.current.vy=0;motion.current.wake();}}><RotateCcw size={14}/></button></> : <span>Six channels. One little world.</span>}</div><button disabled={power !== 'idle'} className="primary enter-button" onClick={()=>{setIntro(false);navigate('channels');}}>{power === 'charging' ? 'Powering on…' : 'Press to start'}<ArrowRight size={16}/></button><span className="action-caption">{intro ? <button className="skip-intro" onClick={()=>{setIntro(false);navigate('channels');}}>Skip intro →</button> : ''}</span></>}</div></main>
- <div className="visually-hidden" role="status">{power === 'charging' ? 'Console powering on.' : power === 'waking' ? 'Television waking up.' : ''}</div><footer className="site-footer"><span>© {new Date().getFullYear()} {portfolio.name}<span className="sample-label">SAMPLE CONTENT</span></span><span className="footer-note">A little nostalgia. A space of my own.</span><div><button aria-label={sound?'Turn sound off':'Turn sound on'} aria-pressed={sound} onClick={()=>setSound(v=>!v)}>{sound?<Volume2 size={15}/>:<VolumeX size={15}/>}Sound {sound?'on':'off'}</button></div></footer></div>;
+
+/** Glossy status pill: `current`, `wip`. */
+function Pill({ kind }: { kind: Badge }) {
+  if (!kind) return null;
+  return <span className={`pill pill-${kind}`}>{kind}</span>;
 }
-createRoot(document.getElementById('root')!).render(<App/>);
 
+/**
+ * Decorative bubbles drifting up through the page margins. Sizes, offsets and
+ * durations are spread by index so the field never looks like a grid. Hidden
+ * entirely under `prefers-reduced-motion` (see style.css).
+ */
+function Bubbles() {
+  const bubbles = [
+    { left: '4%', size: 86, delay: 0, duration: 26 },
+    { left: '11%', size: 34, delay: 6, duration: 19 },
+    { left: '17%', size: 56, delay: 12, duration: 31 },
+    { left: '7%', size: 22, delay: 17, duration: 16 },
+    { left: '21%', size: 14, delay: 3, duration: 22 },
+    { left: '80%', size: 64, delay: 2, duration: 28 },
+    { left: '88%', size: 28, delay: 9, duration: 18 },
+    { left: '94%', size: 44, delay: 14, duration: 24 },
+    { left: '84%', size: 18, delay: 20, duration: 15 },
+    { left: '75%', size: 36, delay: 24, duration: 33 },
+  ];
+  return (
+    <div className="bubbles" aria-hidden="true">
+      {bubbles.map((b, i) => (
+        <span
+          key={i}
+          className="bubble"
+          style={{
+            left: b.left,
+            width: b.size,
+            height: b.size,
+            animationDelay: `-${b.delay}s`,
+            animationDuration: `${b.duration}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
+function Header() {
+  return (
+    <header className="head">
+      <img className="avatar" src={profile.avatar} alt="" width={44} height={44} />
+      <h1>{profile.name}</h1>
+      <nav>
+        {nav.map(item => (
+          <a key={item.label} href={item.href}>
+            {item.label}
+          </a>
+        ))}
+      </nav>
+    </header>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section id={title} className="section">
+      <h2>{title}</h2>
+      <ul className="rows">{children}</ul>
+    </section>
+  );
+}
+
+export default function App() {
+  return (
+    <div className="page">
+      <Bubbles />
+      <div className="glass">
+        <Header />
+
+        <p className="bio">{profile.bio}</p>
+
+        <div className="links">
+          {links.map(l => (
+            <a key={l.label} href={l.href} target={l.href.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
+              {l.label}
+            </a>
+          ))}
+        </div>
+
+        <Section title="work">
+          {work.map(w => (
+            <li key={w.org} className="row">
+              <div className="row-main">
+                <div className="row-title">
+                  <strong>{w.org}</strong>
+                  <Pill kind={w.badge} />
+                </div>
+                <div className="row-sub">{w.role}</div>
+              </div>
+              <div className="row-meta">{w.dates}</div>
+            </li>
+          ))}
+        </Section>
+
+        <Section title="projects">
+          {projects.map(p => (
+            <li key={p.id} className="row">
+              <img className="row-icon" src={p.icon} alt="" width={30} height={30} loading="lazy" />
+              <div className="row-main">
+                <div className="row-title">
+                  <strong>{p.title}</strong>
+                  <Pill kind={p.badge} />
+                </div>
+                <div className="row-sub">{p.blurb}</div>
+                <div className="row-tech">
+                  {p.tech.map(t => (
+                    <span key={t}>{t}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="row-meta row-actions">
+                {p.source && (
+                  <a href={p.source} target="_blank" rel="noreferrer" aria-label={`${p.title} source on GitHub`}>
+                    <Github size={15} />
+                  </a>
+                )}
+                {p.demo && (
+                  <a href={p.demo} target="_blank" rel="noreferrer" aria-label={`${p.title} live demo`}>
+                    <Globe size={15} />
+                  </a>
+                )}
+              </div>
+            </li>
+          ))}
+        </Section>
+
+        <footer className="foot">
+          <span>
+            © {new Date().getFullYear()} {profile.name}
+          </span>
+          <span className="version">{version}</span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(<App />);
