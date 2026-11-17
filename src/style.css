@@ -31,7 +31,7 @@ body {
   line-height: 1.55;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  background: #0d1518;
+  background: #2e1a18;
 }
 
 /*
@@ -45,10 +45,7 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background:
-    radial-gradient(900px 620px at 70% -10%, rgba(64, 104, 110, 0.5), transparent 72%),
-    radial-gradient(640px 480px at 12% 6%, rgba(40, 82, 84, 0.45), transparent 74%),
-    linear-gradient(180deg, #111f22 0%, #0e1a1d 45%, #0b1518 100%);
+  background: linear-gradient(180deg, #3a211c 0%, #2e1a18 55%, #241412 100%);
 }
 
 /* ---------- ascii koi pond ---------- */
