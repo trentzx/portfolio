@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Demo Studio</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0b0e13;
+        color: #cfd8e3;
+        font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      canvas {
+        max-width: 96vw;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      }
+      #status {
+        margin-top: 12px;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="1280" height="720"></canvas>
+    <div id="status">idle</div>
+
+    <script>
+      /*
+       * Demo Studio — recreates the Cursorful look for a CLI demo.
+       *
+       * A terminal session is typed out and its real output printed, inside a
+       * rounded window on a blurred brand-coloured backdrop, with zooms that
+       * ease in on the moments that matter and back out afterwards. The canvas
+       * is captured with MediaRecorder, so the export runs entirely locally.
+       *
+       * The session itself is data (script.*.json), so the same renderer makes
+       * a demo for any project by swapping the file.
+       */
+
+      const W = 1280;
+      const H = 720;
+      const CPS = 0.028; // seconds per typed character
+      const LINE_T = 0.055; // seconds per printed output line
+      const TITLE_T = 2.6; // title card
+      const TAIL_T = 2.0; // hold at the end
+
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+      const status = document.getElementById('status');
+
+      let S = null; // script
+      let atoms = []; // timeline of reveal events
+      let zooms = []; // {from,to,rect}
+      let total = 0;
+
+      const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+      const clamp01 = v => Math.max(0, Math.min(1, v));
+
+      function buildTimeline() {
+        atoms = [];
+        zooms = [];
+        let t = TITLE_T;
+        for (const step of S.steps) {
+          const startedAt = t;
+          // Typing, one character at a time.
+          for (let i = 0; i < step.cmd.length; i++) {
+            atoms.push({ t, kind: 'char', text: step.cmd[i] });
+            t += CPS;
+          }
+          atoms.push({ t, kind: 'commit' });
+          t += 0.28;
+          if (step.hint) {
+            atoms.push({ t, kind: 'hint', text: step.hint });
+            t += 0.42;
+          }
+          for (const line of step.out) {
+            atoms.push({ t, kind: 'out', text: line });
+            t += LINE_T;
+          }
+          t += 0.75; // beat between commands
+
+          if (step.zoom) {
+            // Cursorful pushes in around the action and eases back out.
+            zooms.push({ from: startedAt + step.cmd.length * CPS * 0.55, to: t - 0.25 });
+          }
+        }
+        total = t + TAIL_T;
+      }
+
+      /** Visible buffer and in-progress typing at time t. */
+      function stateAt(t) {
+        const lines = [];
+        let typing = '';
+        let committed = false;
+        for (const a of atoms) {
+          if (a.t > t) break;
+          if (a.kind === 'char') {
+            typing += a.text;
+            committed = false;
+          } else if (a.kind === 'commit') {
+            lines.push({ kind: 'cmd', text: typing });
+            typing = '';
+            committed = true;
+          } else {
+            lines.push({ kind: a.kind, text: a.text });
+          }
+        }
+        return { lines, typing, committed };
+      }
+
+      // ---------- painting ----------
+
+      function paintBackdrop(t) {
+        ctx.save();
+        ctx.fillStyle = S.backdrop[0];
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'lighter';
+        // Blurred blobs drifting slowly: the "wallpaper" behind the window.
+        ctx.filter = 'blur(70px)';
+        S.backdrop.forEach((col, i) => {
+          const a = t * 0.12 + i * 1.9;
+          const x = W * (0.5 + 0.42 * Math.cos(a + i));
+          const y = H * (0.5 + 0.46 * Math.sin(a * 0.8 + i * 1.3));
+          const g = ctx.createRadialGradient(x, y, 10, x, y, 620);
+          g.addColorStop(0, col);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, W, H);
+        });
+        ctx.filter = 'none';
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.restore();
+      }
+
+      function roundRect(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+        c.closePath();
+      }
+
+      /** The terminal window, drawn in its own coordinate space. */
+      function paintWindow(t) {
+        /* Inset generously: the window needs room on both sides or any zoom
+           immediately crops the first character off every line. */
+        const pad = 142;
+        const x = pad;
+        const y = 64;
+        const w = W - pad * 2;
+        const h = H - 136;
+        const r = 14;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 48;
+        ctx.shadowOffsetY = 20;
+        roundRect(ctx, x, y, w, h, r);
+        ctx.fillStyle = '#0f1419';
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        roundRect(ctx, x, y, w, h, r);
+        ctx.clip();
+
+        // Title bar with traffic lights.
+        ctx.fillStyle = '#161c23';
+        ctx.fillRect(x, y, w, 36);
+        ['#ff5f57', '#febc2e', '#28c840'].forEach((col, i) => {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(x + 20 + i * 18, y + 18, 5.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.fillStyle = 'rgba(207,216,227,0.55)';
+        ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${S.title} — ${S.cwd}`, x + w / 2, y + 22);
+        ctx.textAlign = 'left';
+
+        // Session body.
+        const { lines, typing, committed } = stateAt(t);
+        const FS = 15;
+        const LH = 23;
+        ctx.font = `${FS}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+        const bodyTop = y + 36 + 18;
+        const bodyH = h - 36 - 28;
+        const maxLines = Math.floor(bodyH / LH);
+
+        const render = lines.slice();
+        if (typing || !committed) render.push({ kind: 'typing', text: typing });
+        const shown = render.slice(Math.max(0, render.length - maxLines));
+
+        shown.forEach((ln, i) => {
+          const ty = bodyTop + i * LH;
+          let tx = x + 22;
+          if (ln.kind === 'cmd' || ln.kind === 'typing') {
+            ctx.fillStyle = S.accent2;
+            ctx.fillText('›', tx, ty);
+            tx += 18;
+            ctx.fillStyle = '#e8eef5';
+            ctx.fillText(ln.text, tx, ty);
+            if (ln.kind === 'typing' && Math.floor(t * 2) % 2 === 0) {
+              const cw = ctx.measureText(ln.text).width;
+              ctx.fillStyle = S.accent;
+              ctx.fillRect(tx + cw + 2, ty - FS + 3, 8, FS);
+            }
+          } else if (ln.kind === 'hint') {
+            ctx.fillStyle = S.accent;
+            ctx.fillText('  ' + ln.text, tx, ty);
+          } else {
+            ctx.fillStyle = 'rgba(190,203,217,0.85)';
+            ctx.fillText(ln.text, tx, ty);
+          }
+        });
+
+        ctx.restore();
+        return { x, y, w, h };
+      }
+
+      function paintTitle(t) {
+        // Fades out as the terminal takes over.
+        const a = t < TITLE_T - 0.6 ? 1 : clamp01((TITLE_T - t) / 0.6);
+        if (a <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.fillStyle = 'rgba(6,9,14,0.55)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f3f7fb';
+        ctx.font = '600 68px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif';
+        ctx.fillText(S.title, W / 2, H / 2 - 18);
+        ctx.fillStyle = S.accent;
+        ctx.fillRect(W / 2 - 54, H / 2 + 6, 108, 4);
+        ctx.fillStyle = 'rgba(214,226,238,0.92)';
+        ctx.font = '400 24px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif';
+        ctx.fillText(S.tagline, W / 2, H / 2 + 52);
+        ctx.fillStyle = 'rgba(176,192,208,0.75)';
+        ctx.font = '400 17px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif';
+        ctx.fillText(S.subtitle, W / 2, H / 2 + 84);
+        ctx.restore();
+      }
+
+      /** Zoom factor and focus for time t, eased in and out. */
+      function cameraAt(t) {
+        let z = 0;
+        for (const s of zooms) {
+          const inT = 0.55;
+          const outT = 0.65;
+          if (t < s.from - inT || t > s.to + outT) continue;
+          if (t < s.from) z = Math.max(z, ease(clamp01((t - (s.from - inT)) / inT)));
+          else if (t <= s.to) z = 1;
+          else z = Math.max(z, 1 - ease(clamp01((t - s.to) / outT)));
+        }
+        return z;
+      }
+
+      function frame(t) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        paintBackdrop(t);
+
+        const z = cameraAt(t);
+        /*
+         * Modest push, centred on the text column. A deeper zoom off a
+         * left-of-centre focus threw the start of every line outside the
+         * frame, which reads as broken rather than cinematic.
+         */
+        const scale = 1 + 0.26 * z;
+        const fx = W * 0.5;
+        const fy = H * 0.52;
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.scale(scale, scale);
+        ctx.translate(-fx, -fy);
+        paintWindow(t);
+        ctx.restore();
+
+        paintTitle(t);
+      }
+
+      // ---------- record ----------
+
+      async function run() {
+        const res = await fetch('script.polysh.json');
+        S = await res.json();
+        buildTimeline();
+
+        const stream = canvas.captureStream(30);
+        const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m =>
+          MediaRecorder.isTypeSupported(m),
+        );
+        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+        const chunks = [];
+        rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+
+        const done = new Promise(resolve => {
+          rec.onstop = () => {
+            const blob = new Blob(chunks, { type: mime });
+            const fr = new FileReader();
+            fr.onload = () => {
+              window.__dataUrl = fr.result;
+              window.__done = true;
+              status.textContent = `done — ${(blob.size / 1e6).toFixed(2)} MB, ${total.toFixed(1)}s`;
+              resolve();
+            };
+            fr.readAsDataURL(blob);
+          };
+        });
+
+        rec.start();
+        const t0 = performance.now();
+        await new Promise(resolve => {
+          const tick = () => {
+            const t = (performance.now() - t0) / 1000;
+            frame(Math.min(t, total));
+            status.textContent = `recording ${t.toFixed(1)} / ${total.toFixed(1)}s`;
+            if (t < total) requestAnimationFrame(tick);
+            else resolve();
+          };
+          requestAnimationFrame(tick);
+        });
+        rec.stop();
+        await done;
+      }
+
+      window.__done = false;
+      window.__start = () => {
+        window.__done = false;
+        run();
+        return 'started';
+      };
+      // Draw a first frame so the canvas isn't blank before recording.
+      fetch('script.polysh.json')
+        .then(r => r.json())
+        .then(j => {
+          S = j;
+          buildTimeline();
+          frame(0);
+        });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,65 @@
+{
+  "title": "polysh",
+  "tagline": "one shell, every dialect",
+  "subtitle": "type Linux commands on Windows. polysh translates them.",
+  "accent": "#5eb1ff",
+  "accent2": "#7ee787",
+  "backdrop": [
+    "#0d1a2b",
+    "#2f7fd0",
+    "#2fa36a",
+    "#6b4bc4"
+  ],
+  "cwd": "~/projects/polysh",
+  "steps": [
+    {
+      "cmd": "polysh -c \"ls -la\"",
+      "hint": "→ dir /A   (POSIX sh → Windows cmd)",
+      "out": [
+        " Volume in drive C has no label.",
+        "",
+        " Directory of C:\\Users\\trenton\\projects\\polysh",
+        "",
+        "2026-11-17  10:50 AM    <DIR>          .",
+        "2026-11-17  10:50 AM    <DIR>          ..",
+        "2026-11-17  10:50 AM                36 README.md",
+        "2026-11-17  10:50 AM    <DIR>          src"
+      ],
+      "zoom": false
+    },
+    {
+      "cmd": "polysh -c \"touch notes.txt\"",
+      "hint": "→ type nul >> \"notes.txt\"   (POSIX sh → Windows cmd)",
+      "out": [],
+      "zoom": true
+    },
+    {
+      "cmd": "polysh -c \"cat README.md\"",
+      "hint": "→ type README.md   (POSIX sh → Windows cmd)",
+      "out": [
+        "# polysh",
+        "",
+        "One shell, every dialect."
+      ],
+      "zoom": false
+    },
+    {
+      "cmd": "polysh -n --to posix \"dir /A\"",
+      "hint": null,
+      "out": [
+        "ls -al",
+        "(Windows cmd → POSIX sh)"
+      ],
+      "zoom": true
+    },
+    {
+      "cmd": "polysh -n --to powershell \"rm -rf build\"",
+      "hint": null,
+      "out": [
+        "Remove-Item -Recurse -Force build",
+        "(POSIX sh → PowerShell)"
+      ],
+      "zoom": true
+    }
+  ]
+}
