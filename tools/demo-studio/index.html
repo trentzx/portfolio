@@ -67,26 +67,29 @@
         zooms = [];
         let t = TITLE_T;
         for (const step of S.steps) {
+          const prompt = step.prompt || '›';
+          atoms.push({ t, kind: 'prompt', text: prompt });
           // Typing, one character at a time.
           for (let i = 0; i < step.cmd.length; i++) {
             atoms.push({ t, kind: 'char', text: step.cmd[i] });
             t += CPS;
           }
-          atoms.push({ t, kind: 'commit' });
+          atoms.push({ t, kind: 'commit', prompt });
           t += 0.28;
           let hintAt = null;
-          if (step.hint) {
-            hintAt = t;
-            atoms.push({ t, kind: 'hint', text: step.hint });
+          const hints = Array.isArray(step.hint) ? step.hint : step.hint ? [step.hint] : [];
+          for (const hl of hints) {
+            if (hintAt === null) hintAt = t;
+            atoms.push({ t, kind: 'hint', text: hl });
             t += 0.42;
           }
           let firstOutAt = null;
           for (const line of step.out) {
             if (firstOutAt === null) firstOutAt = t;
-            atoms.push({ t, kind: 'out', text: line });
+            atoms.push({ t, kind: step.err ? 'err' : 'out', text: line });
             t += LINE_T;
           }
-          t += 0.75; // beat between commands
+          t += step.pause || 0.75; // beat between commands
 
           const anchor = hintAt !== null ? hintAt : firstOutAt;
           if (step.zoom && anchor !== null) {
@@ -107,20 +110,23 @@
         const lines = [];
         let typing = '';
         let committed = false;
+        let prompt = '›';
         for (const a of atoms) {
           if (a.t > t) break;
-          if (a.kind === 'char') {
+          if (a.kind === 'prompt') {
+            prompt = a.text;
+          } else if (a.kind === 'char') {
             typing += a.text;
             committed = false;
           } else if (a.kind === 'commit') {
-            lines.push({ kind: 'cmd', text: typing });
+            lines.push({ kind: 'cmd', text: typing, prompt: a.prompt });
             typing = '';
             committed = true;
           } else {
             lines.push({ kind: a.kind, text: a.text });
           }
         }
-        return { lines, typing, committed };
+        return { lines, typing, committed, prompt };
       }
 
       // ---------- painting ----------
@@ -223,7 +229,7 @@
         roundRect(ctx, x, y, w, h, r);
         ctx.clip();
 
-        const { lines, typing, committed } = stateAt(t);
+        const { lines, typing, committed, prompt } = stateAt(t);
         const FS = 15;
         const LH = 23;
         ctx.font = `${FS}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
@@ -233,7 +239,7 @@
         const maxLines = Math.floor(bodyH / LH);
 
         const render = lines.slice();
-        if (typing || !committed) render.push({ kind: 'typing', text: typing });
+        if (typing || !committed) render.push({ kind: 'typing', text: typing, prompt });
 
         // Ease the scroll so the buffer glides; snapping a whole line at a
         // time is a big part of what read as low frame rate.
@@ -252,9 +258,11 @@
           if (ty < bodyTop - LH || ty > bodyTop + bodyH) return;
           let tx = x + 22;
           if (ln.kind === 'cmd' || ln.kind === 'typing') {
-            ctx.fillStyle = S.accent2;
-            ctx.fillText('›', tx, ty);
-            tx += 18;
+            const pr = ln.prompt || '›';
+            // PowerShell's own prompt stays neutral; polysh's is its accent.
+            ctx.fillStyle = pr === '›' ? S.accent2 : 'rgba(150,170,190,0.9)';
+            ctx.fillText(pr, tx, ty);
+            tx += ctx.measureText(pr).width + 9;
             ctx.fillStyle = '#e8eef5';
             ctx.fillText(ln.text, tx, ty);
             if (ln.kind === 'typing' && Math.floor(t * 2) % 2 === 0) {
@@ -265,6 +273,9 @@
           } else if (ln.kind === 'hint') {
             ctx.fillStyle = S.accent;
             ctx.fillText('  ' + ln.text, tx, ty);
+          } else if (ln.kind === 'err') {
+            ctx.fillStyle = '#ff6b5e';
+            ctx.fillText(ln.text, tx, ty);
           } else {
             ctx.fillStyle = 'rgba(190,203,217,0.85)';
             ctx.fillText(ln.text, tx, ty);

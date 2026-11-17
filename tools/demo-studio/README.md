@@ -25,9 +25,12 @@ The session is data, so one renderer covers every project.
 | `accent`, `accent2` | prompt and translation-line colours |
 | `backdrop` | 4 colours for the blurred wash; first is the base |
 | `cwd` | shown in the title bar |
+| `steps[].prompt` | prompt for this step (`PS>`, `›`, ...) |
 | `steps[].cmd` | typed one character at a time |
-| `steps[].hint` | dim accent line under the command |
+| `steps[].hint` | translation line(s) under the command; string or array |
 | `steps[].out` | output lines, revealed in sequence |
+| `steps[].err` | render this step's output as an error |
+| `steps[].pause` | beat after this step, seconds |
 | `steps[].zoom` | push in while this step runs |
 
 ## Notes
