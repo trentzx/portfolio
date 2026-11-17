@@ -58,6 +58,10 @@ type Koi = {
 };
 
 type Pad = { x: number; y: number; r: number; rot: number; flower: boolean };
+type Moss = { x: number; y: number; s: number; c: string };
+/* Pale outlines on the pond floor. The reference's most distinctive texture is
+   this web of organic cells, not the banded caustics I had. */
+type FloorCell = [number, number][];
 type School = { x: number; y: number; angle: number; n: number; color: string; spread: number };
 
 function makeKoi(w: number, h: number, seeded: boolean): Koi {
@@ -156,6 +160,8 @@ export default function Pond() {
     let h = 0;
     let koi: Koi[] = [];
     let pads: Pad[] = [];
+    let moss: Moss[] = [];
+    let floor: FloorCell[] = [];
     let schools: School[] = [];
     let raf = 0;
     let last = 0;
@@ -197,13 +203,62 @@ export default function Pond() {
         };
       });
 
-      schools = Array.from({ length: 3 }, () => ({
+      // Pond floor: overlapping irregular cells, whose shared edges read as a
+      // network of stones seen through the water.
+      floor = [];
+      const cellCount = Math.round((w * h) / 24000);
+      for (let i = 0; i < cellCount; i++) {
+        const cx = Math.random() * w;
+        const cy = Math.random() * h;
+        const r = 42 + Math.random() * 74;
+        const k = 7 + ((Math.random() * 4) | 0);
+        const pts: FloorCell = [];
+        for (let j = 0; j < k; j++) {
+          const a = (j / k) * Math.PI * 2;
+          const rr = r * (0.68 + Math.random() * 0.64);
+          pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.86]);
+        }
+        floor.push(pts);
+      }
+
+      /*
+       * Moss and weed on the banks. Scattering it with an edge-biased random
+       * spreads it thinly over the whole pond; real growth comes in clumps, so
+       * clusters are seeded against the edges and bits are scattered inside
+       * each one.
+       */
+      const greens = ['#2f7a3f', '#3f9a4e', '#1f5c33', '#56b45f', '#164a29', '#78c96d'];
+      const band = Math.min(w, h) * 0.16;
+      const clusters = Math.max(8, Math.round((w + h) / 110));
+      moss = [];
+      for (let i = 0; i < clusters; i++) {
+        const alongX = Math.random() < 0.5;
+        const depth = Math.pow(Math.random(), 2.6) * band;
+        const cx = alongX ? (Math.random() < 0.5 ? depth : w - depth) : Math.random() * w;
+        const cy = alongX ? Math.random() * h : Math.random() < 0.5 ? depth : h - depth;
+        const spread = 36 + Math.random() * 70;
+        const bits = 14 + ((Math.random() * 26) | 0);
+        for (let j = 0; j < bits; j++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = Math.pow(Math.random(), 0.7) * spread;
+          moss.push({
+            x: cx + Math.cos(a) * d,
+            y: cy + Math.sin(a) * d * 0.8,
+            s: 4 + Math.random() * 9,
+            c: greens[(Math.random() * greens.length) | 0],
+          });
+        }
+      }
+
+      schools = Array.from({ length: 6 }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
         angle: Math.random() * Math.PI * 2,
-        n: 14 + ((Math.random() * 16) | 0),
-        color: Math.random() < 0.5 ? 'rgba(248,214,96,0.85)' : 'rgba(240,150,170,0.8)',
-        spread: 26 + Math.random() * 22,
+        n: 22 + ((Math.random() * 26) | 0),
+        color: ['rgba(248,214,96,0.85)', 'rgba(240,150,170,0.8)', 'rgba(120,196,240,0.8)', 'rgba(244,142,80,0.82)'][
+          (Math.random() * 4) | 0
+        ],
+        spread: 40 + Math.random() * 34,
       }));
     };
 
@@ -295,6 +350,31 @@ export default function Pond() {
         bctx.strokeStyle = i % 2 ? 'rgba(186,255,222,0.055)' : 'rgba(212,255,236,0.085)';
         bctx.lineWidth = 7 + Math.sin(i * 1.3 + t * 0.2) * 4;
         bctx.stroke();
+      }
+
+      // Floor network sits under everything else on the bed.
+      bctx.lineJoin = 'round';
+      bctx.strokeStyle = 'rgba(196,255,232,0.13)';
+      bctx.lineWidth = 5;
+      for (const cell of floor) {
+        bctx.beginPath();
+        const n = cell.length;
+        // Midpoint-to-midpoint quadratics, so the cells curve instead of
+        // reading as hard polygons.
+        const mid = (a: number, b: number) => [(cell[a][0] + cell[b][0]) / 2, (cell[a][1] + cell[b][1]) / 2];
+        let [mx, my] = mid(n - 1, 0);
+        bctx.moveTo(mx, my);
+        for (let i = 0; i < n; i++) {
+          const [nx, ny] = mid(i, (i + 1) % n);
+          bctx.quadraticCurveTo(cell[i][0], cell[i][1], nx, ny);
+        }
+        bctx.closePath();
+        bctx.stroke();
+      }
+
+      for (const m of moss) {
+        bctx.fillStyle = m.c;
+        bctx.fillRect(m.x, m.y, m.s, m.s);
       }
 
       for (const p of pads) drawPad(bctx, p);
@@ -403,8 +483,8 @@ export default function Pond() {
       t += sec;
       frame++;
 
-      const NEIGH2 = 190 * 190;
-      const SEP2 = 62 * 62;
+      const NEIGH2 = 300 * 300;
+      const SEP2 = 50 * 50;
 
       for (let i = 0; i < koi.length; i++) {
         const k = koi[i];
@@ -438,8 +518,8 @@ export default function Pond() {
         let wy = Math.sin(k.angle) * 1.3;
         if (n) {
           const cl = Math.hypot(cohX, cohY) || 1;
-          wx += (cohX / cl) * 0.35 + (aliX / n) * 0.7 + sepX * 1.15;
-          wy += (cohY / cl) * 0.35 + (aliY / n) * 0.7 + sepY * 1.15;
+          wx += (cohX / cl) * 0.8 + (aliX / n) * 0.75 + sepX * 1.0;
+          wy += (cohY / cl) * 0.8 + (aliY / n) * 0.75 + sepY * 1.0;
         }
 
         const margin = 90;
