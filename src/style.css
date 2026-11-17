@@ -105,6 +105,20 @@ body::before {
     0 30px 64px -26px rgba(3, 30, 24, 0.52);
 }
 
+/*
+ * At dusk and night the pond behind the glass is far darker, which drags the
+ * composited panel down with it. Thicken the glass on those themes so the text
+ * keeps its contrast; Pond.tsx sets the attribute from the visitor's clock.
+ */
+html[data-pond='dark'] .glass {
+  background: linear-gradient(
+    162deg,
+    rgba(252, 255, 254, 0.88),
+    rgba(240, 250, 247, 0.8) 44%,
+    rgba(248, 254, 252, 0.85)
+  );
+}
+
 /* Thick-edge bevel: the inner ring that makes glass read as having depth
    rather than being a flat translucent rectangle. */
 .glass::after {

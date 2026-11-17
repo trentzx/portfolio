@@ -39,6 +39,106 @@ const VARIETIES: Variety[] = [
   { body: '#f6f3ec', belly: '#dbd6c9', marks: ['#26262a', '#36343a'], markCount: 3 },
 ];
 
+type Theme = {
+  name: string;
+  water: [string, string, string];
+  glow: string;
+  floor: string;
+  caustic: [string, string];
+  padLight: string;
+  padDark: string;
+  /** Painted over the finished scene, so it tints the fish too. */
+  ambient: string | null;
+  /** Drives the CSS backstop and the browser theme colour. */
+  css: string;
+  dark: boolean;
+};
+
+const THEMES: Record<string, Theme> = {
+  dawn: {
+    name: 'dawn',
+    water: ['#3e8f84', '#327a70', '#265f58'],
+    glow: 'rgba(255,205,190,0.3)',
+    floor: 'rgba(255,226,214,0.14)',
+    caustic: ['rgba(255,224,212,0.07)', 'rgba(255,236,226,0.1)'],
+    padLight: '#2e6b50',
+    padDark: '#173f31',
+    ambient: 'rgba(255,170,150,0.1)',
+    css: '#327a70',
+    dark: false,
+  },
+  day: {
+    name: 'day',
+    water: ['#2f8d72', '#27795f', '#1b5c48'],
+    glow: 'rgba(142,226,192,0.3)',
+    floor: 'rgba(196,255,232,0.13)',
+    caustic: ['rgba(186,255,222,0.055)', 'rgba(212,255,236,0.085)'],
+    padLight: '#2f6f4a',
+    padDark: '#17412c',
+    ambient: null,
+    css: '#27795f',
+    dark: false,
+  },
+  golden: {
+    name: 'golden',
+    water: ['#468a5c', '#3b7850', '#2b5c3f'],
+    glow: 'rgba(255,214,140,0.34)',
+    floor: 'rgba(255,238,196,0.15)',
+    caustic: ['rgba(255,232,170,0.07)', 'rgba(255,244,206,0.1)'],
+    padLight: '#39713f',
+    padDark: '#1d4526',
+    ambient: 'rgba(255,186,96,0.13)',
+    css: '#3b7850',
+    dark: false,
+  },
+  dusk: {
+    name: 'dusk',
+    water: ['#245f67', '#1d4c57', '#153845'],
+    glow: 'rgba(150,180,235,0.26)',
+    floor: 'rgba(196,226,255,0.12)',
+    caustic: ['rgba(176,210,255,0.055)', 'rgba(200,226,255,0.08)'],
+    padLight: '#245844',
+    padDark: '#12302a',
+    ambient: 'rgba(60,70,150,0.2)',
+    css: '#1d4c57',
+    dark: true,
+  },
+  night: {
+    name: 'night',
+    water: ['#123843', '#0e2d38', '#0a2029'],
+    glow: 'rgba(150,190,240,0.2)',
+    floor: 'rgba(180,220,255,0.1)',
+    caustic: ['rgba(160,200,255,0.045)', 'rgba(190,220,255,0.065)'],
+    padLight: '#1a4435',
+    padDark: '#0d2621',
+    ambient: 'rgba(16,30,80,0.34)',
+    css: '#0e2d38',
+    dark: true,
+  },
+};
+
+/** Theme follows the visitor's own clock. */
+function themeForHour(hr: number): Theme {
+  if (hr < 5) return THEMES.night;
+  if (hr < 8) return THEMES.dawn;
+  if (hr < 17) return THEMES.day;
+  if (hr < 19) return THEMES.golden;
+  if (hr < 21) return THEMES.dusk;
+  return THEMES.night;
+}
+
+type Ripple = { x: number; y: number; r: number; life: number; max: number };
+type Insect = {
+  x: number;
+  y: number;
+  angle: number;
+  speed: number;
+  wander: number;
+  flap: number;
+  kind: 'dragonfly' | 'butterfly';
+  color: string;
+};
+
 type Mark = { u: number; v: number; rx: number; ry: number; color: string };
 
 type Koi = {
@@ -162,11 +262,27 @@ export default function Pond() {
     let pads: Pad[] = [];
     let moss: Moss[] = [];
     let floor: FloorCell[] = [];
+    let insects: Insect[] = [];
+    let ripples: Ripple[] = [];
+    let theme = themeForHour(new Date().getHours());
+    // Rain arrives in showers rather than being on or off for the whole visit.
+    let rain = 0;
+    let rainPhase = 40 + Math.random() * 120;
+    let raining = false;
+    // Where a visitor clicked, and how long the koi keep coming.
+    let call: { x: number; y: number; t: number } | null = null;
     let schools: School[] = [];
     let raf = 0;
     let last = 0;
     let t = 0;
     let frame = 0;
+
+    const applyTheme = () => {
+      document.documentElement.dataset.pond = theme.dark ? 'dark' : 'light';
+      document.body.style.background = theme.css;
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', theme.css);
+    };
 
     const resize = () => {
       w = window.innerWidth;
@@ -250,6 +366,17 @@ export default function Pond() {
         }
       }
 
+      insects = Array.from({ length: 3 }, (_, i) => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        angle: Math.random() * Math.PI * 2,
+        speed: 34 + Math.random() * 26,
+        wander: Math.random() * Math.PI * 2,
+        flap: Math.random() * Math.PI * 2,
+        kind: i === 0 ? ('dragonfly' as const) : ('butterfly' as const),
+        color: i === 0 ? '#6fd3e8' : Math.random() < 0.5 ? '#f6d65a' : '#f2a0c4',
+      }));
+
       schools = Array.from({ length: 6 }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -273,8 +400,8 @@ export default function Pond() {
       c.fill();
 
       const g = c.createRadialGradient(-p.r * 0.3, -p.r * 0.3, p.r * 0.15, 0, 0, p.r);
-      g.addColorStop(0, '#2f6f4a');
-      g.addColorStop(1, '#17412c');
+      g.addColorStop(0, theme.padLight);
+      g.addColorStop(1, theme.padDark);
       c.fillStyle = g;
       c.beginPath();
       // The wedge missing from one side is what reads as a lily pad.
@@ -314,9 +441,9 @@ export default function Pond() {
 
     const drawBack = () => {
       const g = bctx.createLinearGradient(0, 0, w * 0.4, h);
-      g.addColorStop(0, '#2f8d72');
-      g.addColorStop(0.5, '#27795f');
-      g.addColorStop(1, '#1b5c48');
+      g.addColorStop(0, theme.water[0]);
+      g.addColorStop(0.5, theme.water[1]);
+      g.addColorStop(1, theme.water[2]);
       bctx.fillStyle = g;
       bctx.fillRect(0, 0, w, h);
 
@@ -328,8 +455,8 @@ export default function Pond() {
         h * 0.4,
         Math.max(w, h) * 0.6,
       );
-      glow.addColorStop(0, 'rgba(142,226,192,0.3)');
-      glow.addColorStop(1, 'rgba(142,226,192,0)');
+      glow.addColorStop(0, theme.glow);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
       bctx.fillStyle = glow;
       bctx.fillRect(0, 0, w, h);
 
@@ -347,14 +474,14 @@ export default function Pond() {
           if (x <= -40) bctx.moveTo(x, y);
           else bctx.lineTo(x, y);
         }
-        bctx.strokeStyle = i % 2 ? 'rgba(186,255,222,0.055)' : 'rgba(212,255,236,0.085)';
+        bctx.strokeStyle = i % 2 ? theme.caustic[0] : theme.caustic[1];
         bctx.lineWidth = 7 + Math.sin(i * 1.3 + t * 0.2) * 4;
         bctx.stroke();
       }
 
       // Floor network sits under everything else on the bed.
       bctx.lineJoin = 'round';
-      bctx.strokeStyle = 'rgba(196,255,232,0.13)';
+      bctx.strokeStyle = theme.floor;
       bctx.lineWidth = 5;
       for (const cell of floor) {
         bctx.beginPath();
@@ -463,6 +590,41 @@ export default function Pond() {
       }
     };
 
+    const drawInsect = (b: Insect) => {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.angle);
+      // Wings beat fast enough to blur; the scale swing reads as that.
+      const beat = Math.abs(Math.sin(b.flap));
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fillRect(3, 7, 9, 3);
+      ctx.fillStyle = b.color;
+      if (b.kind === 'dragonfly') {
+        ctx.fillRect(-9, -1.5, 18, 3);
+        ctx.fillStyle = 'rgba(230,250,255,0.6)';
+        ctx.fillRect(-2, -3 - 7 * beat, 5, 7 * beat);
+        ctx.fillRect(-2, 3, 5, 7 * beat);
+      } else {
+        ctx.fillRect(-2, -2, 4, 5);
+        ctx.fillRect(-7, -3 - 5 * beat, 6, 5 + 5 * beat);
+        ctx.fillRect(1, -3 - 5 * beat, 6, 5 + 5 * beat);
+      }
+      ctx.restore();
+    };
+
+    const drawRipples = () => {
+      ctx.strokeStyle = 'rgba(232,255,250,0.9)';
+      for (const r of ripples) {
+        const a = Math.max(0, r.life);
+        ctx.globalAlpha = a * 0.8;
+        ctx.lineWidth = 1.5 + 3.5 * a;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    };
+
     const render = () => {
       if (frame % SLOW_EVERY === 0) drawBack();
       ctx.save();
@@ -472,6 +634,19 @@ export default function Pond() {
       ctx.restore();
       for (const s of schools) drawSchool(s);
       for (const k of koi) drawKoi(k);
+      if (ripples.length) drawRipples();
+      for (const b of insects) drawInsect(b);
+
+      // Rain veil, then the theme's ambient tint over the finished scene so it
+      // colours the fish as well as the water.
+      if (rain > 0.02) {
+        ctx.fillStyle = `rgba(186,214,226,${0.1 * rain})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+      if (theme.ambient) {
+        ctx.fillStyle = theme.ambient;
+        ctx.fillRect(0, 0, w, h);
+      }
     };
 
     const step = (now: number) => {
@@ -482,6 +657,50 @@ export default function Pond() {
       const sec = Math.min(dt, 100) / 1000;
       t += sec;
       frame++;
+
+      // Showers build and fade rather than switching on and off.
+      rainPhase -= sec;
+      if (rainPhase <= 0) {
+        raining = !raining;
+        rainPhase = raining ? 25 + Math.random() * 45 : 90 + Math.random() * 180;
+      }
+      rain += ((raining ? 1 : 0) - rain) * Math.min(1, sec * 0.35);
+      if (rain > 0.05) {
+        const drops = rain * 70 * sec;
+        for (let i = 0; i < drops; i++) {
+          if (Math.random() > drops % 1 && i >= drops - 1) break;
+          ripples.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: 1,
+            life: 1,
+            max: 22 + Math.random() * 34,
+          });
+        }
+      }
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.r += r.max * sec * 1.4;
+        r.life -= sec * 1.5;
+        if (r.life <= 0) ripples.splice(i, 1);
+      }
+
+      if (call) {
+        call.t -= sec;
+        if (call.t <= 0) call = null;
+      }
+
+      for (const b of insects) {
+        b.wander += sec * 1.4;
+        b.angle += Math.sin(b.wander) * 1.5 * sec;
+        b.flap += sec * (b.kind === 'dragonfly' ? 26 : 11);
+        b.x += Math.cos(b.angle) * b.speed * sec;
+        b.y += Math.sin(b.angle) * b.speed * sec;
+        if (b.x < -40) b.x = w + 40;
+        if (b.x > w + 40) b.x = -40;
+        if (b.y < -40) b.y = h + 40;
+        if (b.y > h + 40) b.y = -40;
+      }
 
       const NEIGH2 = 300 * 300;
       const SEP2 = 50 * 50;
@@ -522,6 +741,16 @@ export default function Pond() {
           wy += (cohY / cl) * 0.8 + (aliY / n) * 0.75 + sepY * 1.0;
         }
 
+        // A called shoal beats every other urge, briefly.
+        if (call) {
+          const dx = call.x - k.x;
+          const dy = call.y - k.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const pull = 2.6 * Math.min(1, call.t / 1.5);
+          wx += (dx / d) * pull;
+          wy += (dy / d) * pull;
+        }
+
         const margin = 90;
         if (k.x < margin) wx += 1.7;
         if (k.x > w - margin) wx -= 1.7;
@@ -537,7 +766,7 @@ export default function Pond() {
         k.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
 
         const turning = Math.min(1, Math.abs(diff));
-        k.speed = k.cruise * (k.dart > 0 ? 1.8 : 1) * (1 - turning * 0.3);
+        k.speed = k.cruise * (k.dart > 0 ? 1.8 : 1) * (call ? 1.7 : 1) * (1 - turning * 0.3);
         k.swim += (3.4 + k.speed * 0.05) * sec;
         k.x += Math.cos(k.angle) * k.speed * sec;
         k.y += Math.sin(k.angle) * k.speed * sec;
@@ -585,16 +814,41 @@ export default function Pond() {
       start();
     };
 
+    const onPointerDown = (e: PointerEvent) => {
+      // Leave the page's own controls alone; only open water calls the fish.
+      // The target is not always an Element (it can be the window itself), and
+      // calling closest() blindly throws and swallows the whole handler.
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest('.glass')) return;
+      call = { x: e.clientX, y: e.clientY, t: 3.2 };
+      ripples.push({ x: e.clientX, y: e.clientY, r: 2, life: 1, max: 54 });
+    };
+
+    // Re-check the clock periodically so a page left open rolls into the next
+    // part of the day.
+    const clock = window.setInterval(() => {
+      const next = themeForHour(new Date().getHours());
+      if (next !== theme) {
+        theme = next;
+        applyTheme();
+        drawBack();
+      }
+    }, 60000);
+
+    applyTheme();
     resize();
     drawBack();
     render();
     start();
 
+    window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('resize', onResize);
     document.addEventListener('visibilitychange', onVisibility);
     calm.addEventListener('change', onCalmChange);
     return () => {
       stop();
+      window.clearInterval(clock);
+      window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
       calm.removeEventListener('change', onCalmChange);
