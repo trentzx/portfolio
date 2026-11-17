@@ -25,29 +25,38 @@ const WATER_BANDS = 4; // water is refreshed one horizontal band per frame
 
 // Shade ramp, dark pond floor through lit surface.
 const RAMP: [number, number, number][] = [
-  [62, 39, 33],
-  [72, 45, 37],
-  [84, 53, 42],
-  [96, 61, 47],
-  [110, 70, 52],
-  [126, 81, 58],
-  [144, 94, 65],
-  [162, 108, 73],
-  [182, 126, 84],
-  [204, 150, 100],
-  [226, 178, 122],
-  [244, 210, 158],
+  [16, 58, 60],
+  [20, 70, 72],
+  [24, 84, 86],
+  [30, 100, 100],
+  [36, 116, 115],
+  [44, 134, 130],
+  [54, 152, 146],
+  [68, 172, 163],
+  [86, 192, 181],
+  [110, 212, 199],
+  [142, 230, 216],
+  [190, 246, 236],
 ];
 const RAMP_GLYPHS = ['~', '~', '~', '~', '-', '~', '=', '~', 'o', '0', 'O', '0'];
 const RAMP_CSS = RAMP.map(([r, g, b]) => `rgb(${r},${g},${b})`);
 /* Solid pond surface painted under every glyph. Without it half the pixels on
    screen stay transparent and the field reads as noise on black rather than
    water: measured against the reference, luminance SD was 58 versus 30. */
-const BASE = 'rgb(62,39,33)';
+const BASE = 'rgb(16,58,60)';
 /* The darkest ramp steps draw nothing and let BASE show through, which keeps
    the surface calm and skips the majority of fillText calls. */
 const RAMP_MIN_DRAW = 1;
 
+/* The moon needs colours the water never reaches, or it just blends into the
+   bright end of the ramp and disappears. */
+const MOON_RAMP = [
+  'rgb(150,198,190)',
+  'rgb(196,228,218)',
+  'rgb(230,246,238)',
+  'rgb(252,255,250)',
+];
+const MOON_GLYPHS = ['=', 'o', '0', 'O'];
 const PAD_GREEN = ['rgb(34,78,44)', 'rgb(46,100,54)', 'rgb(62,124,66)'];
 const PAD_GLYPHS = ['o', '0', '@'];
 const BLOSSOM = 'rgb(226,150,170)';
@@ -61,6 +70,8 @@ const EYE = 4;
 const EDGE = 5;
 
 const KOI_GLYPHS = 'o0O8e&';
+const KOI_SHADOW = 'rgba(8,30,32,0.5)';
+const KOI_SHADOW_OFFSET = 2;
 const FIN_GLYPHS = ':;.,';
 
 type Variety = { base: string; patch: string; fin: string; edge: string; blotches: number };
@@ -68,34 +79,34 @@ type Variety = { base: string; patch: string; fin: string; edge: string; blotche
 const VARIETIES: Variety[] = [
   // kohaku
   {
-    base: 'rgb(244,240,232)',
-    patch: 'rgb(214,66,48)',
-    fin: 'rgb(214,208,198)',
-    edge: 'rgb(150,132,120)',
+    base: 'rgb(252,250,245)',
+    patch: 'rgb(228,54,38)',
+    fin: 'rgb(226,222,214)',
+    edge: 'rgb(26,46,48)',
     blotches: 3,
   },
   // ogon
   {
-    base: 'rgb(236,186,78)',
-    patch: 'rgb(206,146,40)',
-    fin: 'rgb(220,180,96)',
-    edge: 'rgb(150,106,36)',
+    base: 'rgb(250,196,70)',
+    patch: 'rgb(222,152,32)',
+    fin: 'rgb(236,196,104)',
+    edge: 'rgb(74,48,12)',
     blotches: 1,
   },
-  // asagi
+  // kohaku, heavier on the red
   {
-    base: 'rgb(150,186,218)',
-    patch: 'rgb(206,74,52)',
-    fin: 'rgb(192,206,218)',
-    edge: 'rgb(86,116,148)',
-    blotches: 2,
+    base: 'rgb(250,248,242)',
+    patch: 'rgb(214,40,32)',
+    fin: 'rgb(224,218,210)',
+    edge: 'rgb(26,46,48)',
+    blotches: 4,
   },
   // shiro
   {
-    base: 'rgb(246,244,238)',
-    patch: 'rgb(56,58,60)',
-    fin: 'rgb(220,218,212)',
-    edge: 'rgb(146,148,144)',
+    base: 'rgb(252,251,247)',
+    patch: 'rgb(34,36,38)',
+    fin: 'rgb(230,228,222)',
+    edge: 'rgb(26,46,48)',
     blotches: 2,
   },
 ];
@@ -197,7 +208,7 @@ function buildSprite(len: number, variety: Variety): Sprite {
 
 function makeKoi(cols: number, rows: number, seeded: boolean): Koi {
   const variety = VARIETIES[(Math.random() * VARIETIES.length) | 0];
-  const len = Math.round(18 + Math.random() * 10);
+  const len = Math.round(24 + Math.random() * 12);
   const angle = Math.random() * Math.PI * 2;
   const cruise = 7 + Math.random() * 6;
   return {
@@ -246,7 +257,9 @@ export default function Pond() {
 
     // Reused every frame so the render path allocates nothing.
     const shadeBuckets: number[][] = RAMP.map(() => []);
+    const moonBuckets: number[][] = MOON_RAMP.map(() => []);
     const koiBuckets = new Map<string, number[]>();
+    koiBuckets.set(KOI_SHADOW, []);
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -277,9 +290,10 @@ export default function Pond() {
         flower: Math.random() < 0.45,
       }));
 
-      moonR = Math.min(cols, rows) * 0.17;
-      moonX = cols * (0.62 + Math.random() * 0.16);
-      moonY = rows * (0.34 + Math.random() * 0.2);
+      moonR = Math.min(cols, rows) * 0.3;
+      const rightSide = Math.random() < 0.5;
+      moonX = cols * (rightSide ? 0.78 + Math.random() * 0.12 : 0.1 + Math.random() * 0.12);
+      moonY = rows * (0.26 + Math.random() * 0.34);
     };
 
     const drawWater = (band: number) => {
@@ -291,6 +305,7 @@ export default function Pond() {
       wctx.fillStyle = BASE;
       wctx.fillRect(0, ry0 * CELL, vw, (ry1 - ry0 + 1) * CELL);
       for (const b of shadeBuckets) b.length = 0;
+      for (const b of moonBuckets) b.length = 0;
 
       const cx = cols / 2;
       const cy = rows / 2;
@@ -310,11 +325,20 @@ export default function Pond() {
           const r = Math.hypot(x - cx, y - cy) * norm;
           let shade = 0.23 + (n * 0.5 + 0.5) * (0.5 + 0.44 * r);
 
-          // Moon reflection, broken into bands by the surface.
-          const md = Math.hypot((x - moonX) * 1.12, y - moonY);
+          // Moon reflection, broken into bands by the surface. Bright cells
+          // take the moon's own palette and skip the water glyph entirely;
+          // the faint rim just lifts the water a little, as a halo.
+          const md = Math.hypot((x - moonX) * 1.1, y - moonY);
           if (md < moonR) {
             const fall = 1 - md / moonR;
-            shade += fall * fall * (0.6 + 0.4 * Math.sin(y * 0.85)) * 1.25;
+            const core = Math.min(1, fall / 0.5);
+            const amt = core * core * (0.5 + 0.5 * Math.sin(y * 0.8));
+            if (amt > 0.045) {
+              const mi = Math.min(MOON_RAMP.length - 1, (amt * 3.4 * MOON_RAMP.length) | 0);
+              moonBuckets[mi].push(x, y);
+              continue;
+            }
+            shade += amt * 0.8;
           }
 
           const idx = Math.max(0, Math.min(RAMP.length - 1, (shade * RAMP.length) | 0));
@@ -327,6 +351,16 @@ export default function Pond() {
         if (!b.length) continue;
         wctx.fillStyle = RAMP_CSS[i];
         const g = RAMP_GLYPHS[i];
+        for (let j = 0; j < b.length; j += 2) {
+          wctx.fillText(g, b[j] * CELL, b[j + 1] * CELL);
+        }
+      }
+
+      for (let i = 0; i < moonBuckets.length; i++) {
+        const b = moonBuckets[i];
+        if (!b.length) continue;
+        wctx.fillStyle = MOON_RAMP[i];
+        const g = MOON_GLYPHS[i];
         for (let j = 0; j < b.length; j += 2) {
           wctx.fillText(g, b[j] * CELL, b[j + 1] * CELL);
         }
@@ -400,7 +434,8 @@ export default function Pond() {
             const kind = cells[sy * sw + sx];
             if (kind === EMPTY) continue;
             const hash = ((gx * 73856093) ^ (gy * 19349663)) & 1023;
-            if (kind === EYE) pushKoi('rgb(24,18,16)', gx, gy, -1);
+            pushKoi(KOI_SHADOW, gx + KOI_SHADOW_OFFSET, gy + KOI_SHADOW_OFFSET, hash % KOI_GLYPHS.length);
+            if (kind === EYE) pushKoi('rgb(16,20,22)', gx, gy, -1);
             else if (kind === FIN) pushKoi(k.variety.fin, gx, gy, -2 - (hash % FIN_GLYPHS.length));
             else if (kind === EDGE) pushKoi(k.variety.edge, gx, gy, hash % KOI_GLYPHS.length);
             else if (kind === PATCH) pushKoi(k.variety.patch, gx, gy, hash % KOI_GLYPHS.length);
