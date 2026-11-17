@@ -316,14 +316,14 @@ export default function Pond() {
           // Low frequency across x, high across y: each row stays coherent so
           // the surface breaks into horizontal streaks rather than noise.
           const n =
-            Math.sin(x * 0.055 + y * 0.42 + t * 0.5) * 0.5 +
-            Math.sin(x * 0.12 - y * 0.27 + t * 0.32) * 0.3 +
-            Math.sin(x * 0.02 + y * 0.63 - t * 0.21) * 0.2;
+            Math.sin(x * 0.055 + y * 0.42 + t * 0.5) * 0.44 +
+            Math.sin(x * 0.12 - y * 0.27 + t * 0.32) * 0.26 +
+            Math.sin(x * 0.02 + y * 0.63 - t * 0.21) * 0.16;
 
           // Darker toward the middle, so the pond reads as deep water with a
           // lit rim rather than a flat field.
           const r = Math.hypot(x - cx, y - cy) * norm;
-          let shade = 0.23 + (n * 0.5 + 0.5) * (0.5 + 0.44 * r);
+          let shade = 0.2 + (n * 0.5 + 0.5) * (0.26 + 0.2 * r);
 
           // Moon reflection, broken into bands by the surface. Bright cells
           // take the moon's own palette and skip the water glyph entirely;
