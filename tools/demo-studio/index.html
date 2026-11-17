@@ -137,6 +137,11 @@
        * full-canvas gradients cost so much that the render loop fell to
        * 13.6fps while recording.
        */
+      /* ?staticbg freezes the wash. An animated backdrop changes every pixel
+         every frame, which defeats GIF's frame-delta compression and roughly
+         quadruples the file; for a GIF export the drift is not worth it. */
+      const STATIC_BG = new URLSearchParams(location.search).has('staticbg');
+
       const BW = 64;
       const BH = 36;
       const bg = document.createElement('canvas');
@@ -145,6 +150,7 @@
       const bgx = bg.getContext('2d');
 
       function paintBackdrop(t) {
+        if (STATIC_BG) t = 6;
         bgx.globalCompositeOperation = 'source-over';
         bgx.fillStyle = S.backdrop[0];
         bgx.fillRect(0, 0, BW, BH);

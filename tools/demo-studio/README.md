@@ -42,6 +42,23 @@ The session is data, so one renderer covers every project.
   accept WebM. For MP4: `ffmpeg -i polysh-demo.webm -c:v libx264 -crf 18
   -pix_fmt yuv420p polysh-demo.mp4`.
 
+## Exporting a GIF
+
+Append `?staticbg` to freeze the backdrop wash, then convert with ffmpeg:
+
+```bash
+ffmpeg -i demo.webm -vf "fps=10,scale=760:-1:flags=lanczos,palettegen=stats_mode=diff:max_colors=96" pal.png
+ffmpeg -i demo.webm -i pal.png -lavfi "fps=10,scale=760:-1:flags=lanczos[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" demo.gif
+```
+
+Freezing the backdrop is not cosmetic. An animated wash changes every pixel
+every frame, which defeats GIF's frame-delta compression: the same 18.7s clip
+came out at 4.6MB animated and 1.9MB static. `dither=none` saves a further
+~10% and flat UI colour does not need the dithering anyway.
+
+A gradient backdrop is expensive in GIF regardless. For the smallest possible
+file, give the GIF cut a flat dark background instead of the wash.
+
 ## Keeping it at 60fps
 
 Output frame rate is whatever the render loop achieves, so anything expensive
