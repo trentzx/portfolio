@@ -3,19 +3,27 @@ import { useEffect, useRef } from 'react';
 /*
  * ASCII koi pond.
  *
- * Each koi is generated once as a small bitmap in its own local space (body
- * profile, fins, markings, eyes), then rasterised onto the page-wide character
- * grid every frame by inverse-rotating each cell back into sprite space. That
- * is what keeps the glyph grid globally aligned while the fish sit at arbitrary
- * angles, instead of the whole sprite rotating as one image.
+ * Each koi is generated once as a bitmap in its own local space (body profile,
+ * fins, dorsal ridge, barbels, outline, markings, eyes), then rasterised onto
+ * the page-wide character grid every frame by inverse-rotating each cell back
+ * into sprite space. That keeps the glyph grid globally aligned while the fish
+ * sit at arbitrary angles, instead of rotating a sprite as one image.
  *
- * Draw calls are bucketed by colour so the canvas only changes fillStyle a
- * handful of times per frame; fillStyle churn, not fillText, is what makes a
- * grid this dense expensive.
+ * The lateral offset applied during that inverse mapping is what makes the body
+ * undulate: shifting a row sideways as a function of how far along the body it
+ * sits bends the whole fish, so it swims rather than slides.
+ *
+ * Draw calls are bucketed by colour. fillStyle churn, not fillText, is what
+ * makes a grid this dense expensive, so the flush changes it about a dozen
+ * times a frame rather than thousands.
  */
 
 const CELL = 8;
 const FPS_CAP = 30;
+const SHADOW = 'rgba(96, 118, 108, 0.3)';
+const WATER = 'rgba(150, 196, 200, 0.13)';
+const EYE_COLOR = 'rgba(16, 20, 22, 0.95)';
+const SHADOW_OFFSET = 3;
 
 // Cell kinds inside a sprite.
 const EMPTY = 0;
@@ -23,6 +31,8 @@ const BODY = 1;
 const PATCH = 2;
 const FIN = 3;
 const EYE = 4;
+const EDGE = 5;
+const DORSAL = 6;
 
 const BODY_GLYPHS = '#%@&8B';
 const FIN_GLYPHS = '+:*=.';
@@ -33,17 +43,52 @@ const GLYPHS = BODY_GLYPHS + FIN_GLYPHS + WATER_GLYPHS;
 const FIN_AT = BODY_GLYPHS.length;
 const WATER_AT = FIN_AT + FIN_GLYPHS.length;
 
-type Variety = { base: string; patch: string; fin: string; blotches: number };
+type Variety = {
+  base: string;
+  patch: string;
+  fin: string;
+  edge: string;
+  dorsal: string;
+  blotches: number;
+};
 
 const VARIETIES: Variety[] = [
-  // kohaku: white with red markings
-  { base: 'rgba(246, 243, 236, 0.98)', patch: 'rgba(199, 48, 34, 0.97)', fin: 'rgba(96, 116, 112, 0.72)', blotches: 3 },
-  // ogon: solid gold
-  { base: 'rgba(216, 158, 44, 0.97)', patch: 'rgba(178, 120, 26, 0.97)', fin: 'rgba(104, 118, 98, 0.72)', blotches: 1 },
-  // asagi: steel blue with red
-  { base: 'rgba(118, 152, 186, 0.97)', patch: 'rgba(186, 60, 44, 0.95)', fin: 'rgba(92, 114, 122, 0.72)', blotches: 2 },
-  // shiro: white with charcoal
-  { base: 'rgba(248, 246, 240, 0.98)', patch: 'rgba(42, 46, 48, 0.9)', fin: 'rgba(96, 110, 108, 0.72)', blotches: 2 },
+  {
+    // kohaku: white with red markings
+    base: 'rgba(242, 238, 228, 0.97)',
+    patch: 'rgba(206, 62, 42, 0.97)',
+    fin: 'rgba(126, 144, 136, 0.72)',
+    edge: 'rgba(146, 140, 128, 0.9)',
+    dorsal: 'rgba(206, 200, 188, 0.95)',
+    blotches: 3,
+  },
+  {
+    // ogon: solid gold
+    base: 'rgba(221, 166, 60, 0.97)',
+    patch: 'rgba(186, 128, 32, 0.97)',
+    fin: 'rgba(130, 136, 110, 0.72)',
+    edge: 'rgba(148, 110, 38, 0.9)',
+    dorsal: 'rgba(196, 146, 50, 0.95)',
+    blotches: 1,
+  },
+  {
+    // asagi: steel blue with red
+    base: 'rgba(143, 180, 214, 0.97)',
+    patch: 'rgba(196, 85, 60, 0.95)',
+    fin: 'rgba(110, 134, 144, 0.72)',
+    edge: 'rgba(97, 126, 154, 0.9)',
+    dorsal: 'rgba(120, 156, 190, 0.95)',
+    blotches: 2,
+  },
+  {
+    // shiro: white with charcoal
+    base: 'rgba(244, 242, 236, 0.97)',
+    patch: 'rgba(48, 52, 54, 0.92)',
+    fin: 'rgba(124, 136, 132, 0.72)',
+    edge: 'rgba(145, 152, 148, 0.9)',
+    dorsal: 'rgba(210, 208, 202, 0.95)',
+    blotches: 2,
+  },
 ];
 
 type Sprite = { w: number; h: number; cells: Uint8Array };
@@ -53,8 +98,12 @@ type Koi = {
   y: number;
   angle: number;
   speed: number;
+  cruise: number;
+  burst: number;
   wander: number;
   wanderSpeed: number;
+  swim: number;
+  amp: number;
   sprite: Sprite;
   variety: Variety;
 };
@@ -62,7 +111,7 @@ type Koi = {
 /** Builds one koi bitmap, nose at row 0, pointing toward +y. */
 function buildSprite(len: number, variety: Variety): Sprite {
   const maxHW = Math.max(2, len * 0.15);
-  const w = Math.ceil(maxHW * 2 + 5);
+  const w = Math.ceil(maxHW * 2 + 7);
   const h = len;
   const cells = new Uint8Array(w * h);
   const cx = (w - 1) / 2;
@@ -79,10 +128,10 @@ function buildSprite(len: number, variety: Variety): Sprite {
         if (Math.abs(x - cx) <= hw) cells[y * w + x] = BODY;
       }
       // Pectoral fins, then pelvic: both sweep out from the body edge and
-      // peak mid-fin so they taper at both ends.
+      // peak mid-fin so they taper at each end.
       for (const [from, to, reach] of [
-        [0.22, 0.4, 0.95],
-        [0.54, 0.66, 0.55],
+        [0.2, 0.4, 1.05],
+        [0.52, 0.66, 0.6],
       ]) {
         if (u > from && u < to) {
           const mid = (from + to) / 2;
@@ -97,21 +146,20 @@ function buildSprite(len: number, variety: Variety): Sprite {
     } else {
       // Caudal fin: flares out, with a notch carved up the middle so it forks.
       const v = (t - 0.8) / 0.2;
-      const hw = maxHW * (0.2 + 1.25 * v);
-      const notch = maxHW * 1.05 * v * v;
+      const hw = maxHW * (0.2 + 1.3 * v);
+      const notch = maxHW * 1.1 * v * v;
       for (let x = 0; x < w; x++) {
         const ad = Math.abs(x - cx);
-        if (ad <= hw && !(v > 0.28 && ad < notch)) cells[y * w + x] = FIN;
+        if (ad <= hw && !(v > 0.26 && ad < notch)) cells[y * w + x] = FIN;
       }
     }
   }
 
   // Markings: a few soft blobs dropped along the spine.
   for (let i = 0; i < variety.blotches; i++) {
-    const bt = 0.1 + Math.random() * 0.6;
-    const by = bt * h;
+    const by = (0.1 + Math.random() * 0.6) * h;
     const bx = cx + (Math.random() - 0.5) * maxHW * 0.7;
-    const br = maxHW * (0.7 + Math.random() * 0.8);
+    const br = maxHW * (0.7 + Math.random() * 0.85);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (cells[y * w + x] !== BODY) continue;
@@ -120,6 +168,35 @@ function buildSprite(len: number, variety: Variety): Sprite {
         if (dx * dx + dy * dy <= br * br) cells[y * w + x] = PATCH;
       }
     }
+  }
+
+  // Outline: any body cell with an empty orthogonal neighbour. Gives the fish
+  // a readable silhouette instead of a colour blob. Read from a snapshot so
+  // freshly marked edges don't cascade inward.
+  const snapshot = cells.slice();
+  const solid = (x: number, y: number) =>
+    x >= 0 && x < w && y >= 0 && y < h && snapshot[y * w + x] !== EMPTY;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const k = snapshot[y * w + x];
+      if (k !== BODY && k !== PATCH) continue;
+      if (!solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1)) {
+        cells[y * w + x] = EDGE;
+      }
+    }
+  }
+
+  // Dorsal ridge down the spine, plus barbels either side of the mouth.
+  for (let y = 0; y < h; y++) {
+    const t = y / (h - 1);
+    if (t < 0.18 || t > 0.74) continue;
+    const x = Math.round(cx);
+    if (cells[y * w + x] === BODY) cells[y * w + x] = DORSAL;
+  }
+  const by = Math.round(h * 0.035);
+  for (const side of [-1, 1]) {
+    const bx = Math.round(cx + side * (halfWidthAt(0.03) + 1));
+    if (bx >= 0 && bx < w && cells[by * w + bx] === EMPTY) cells[by * w + bx] = FIN;
   }
 
   // Eyes, just behind the nose.
@@ -135,16 +212,20 @@ function buildSprite(len: number, variety: Variety): Sprite {
 
 function makeKoi(cols: number, rows: number, seeded: boolean): Koi {
   const variety = VARIETIES[(Math.random() * VARIETIES.length) | 0];
-  const len = Math.round(36 + Math.random() * 24);
+  const len = Math.round(36 + Math.random() * 26);
   const angle = Math.random() * Math.PI * 2;
-  const margin = len;
+  const cruise = 5.5 + Math.random() * 5;
   return {
-    x: seeded ? Math.random() * cols : cols / 2 - Math.sin(angle) * (cols / 2 + margin),
-    y: seeded ? Math.random() * rows : rows / 2 + Math.cos(angle) * (rows / 2 + margin),
+    x: seeded ? Math.random() * cols : cols / 2 - Math.sin(angle) * (cols / 2 + len),
+    y: seeded ? Math.random() * rows : rows / 2 + Math.cos(angle) * (rows / 2 + len),
     angle,
-    speed: 2.6 + Math.random() * 3.4,
+    speed: cruise,
+    cruise,
+    burst: 2 + Math.random() * 6,
     wander: Math.random() * Math.PI * 2,
-    wanderSpeed: 0.12 + Math.random() * 0.22,
+    wanderSpeed: 0.3 + Math.random() * 0.55,
+    swim: Math.random() * Math.PI * 2,
+    amp: 1.1 + Math.random() * 1.2,
     sprite: buildSprite(len, variety),
     variety,
   };
@@ -167,8 +248,12 @@ export default function Pond() {
     let last = 0;
     let t = 0;
 
-    // Reused per frame so the render path allocates nothing.
+    // Reused per frame so the render path allocates nothing. Seeded in paint
+    // order: a Map preserves insertion order, so water and shadows always flush
+    // before any fish colour and therefore sit underneath.
     const buckets = new Map<string, number[]>();
+    buckets.set(WATER, []);
+    buckets.set(SHADOW, []);
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -183,7 +268,7 @@ export default function Pond() {
       ctx.textBaseline = 'top';
       cols = Math.ceil(w / CELL) + 2;
       rows = Math.ceil(h / CELL) + 2;
-      const want = Math.max(3, Math.min(7, Math.round((cols * rows) / 5200)));
+      const want = Math.max(4, Math.min(9, Math.round((cols * rows) / 3800)));
       koi = Array.from({ length: want }, () => makeKoi(cols, rows, true));
     };
 
@@ -204,7 +289,7 @@ export default function Pond() {
           const v =
             Math.sin(x * 0.21 + y * 0.14 + t * 0.5 + hash * 0.00614) +
             Math.sin(x * 0.08 - y * 0.25 + t * 0.28);
-          if (v > 1.52) push('rgba(70, 140, 165, 0.16)', x, y, WATER_AT + (hash % WATER_GLYPHS.length));
+          if (v > 1.52) push(WATER, x, y, WATER_AT + (hash % WATER_GLYPHS.length));
         }
       }
 
@@ -215,7 +300,7 @@ export default function Pond() {
         const scy = (sh - 1) / 2;
         const cos = Math.cos(k.angle);
         const sin = Math.sin(k.angle);
-        const reach = Math.ceil(Math.hypot(sw, sh) / 2) + 1;
+        const reach = Math.ceil(Math.hypot(sw, sh) / 2) + 3;
 
         const gx0 = Math.max(0, Math.floor(k.x - reach));
         const gx1 = Math.min(cols - 1, Math.ceil(k.x + reach));
@@ -229,24 +314,26 @@ export default function Pond() {
             // Inverse-rotate this grid cell into the sprite's own space.
             const lx = dx * cos + dy * sin;
             const ly = -dx * sin + dy * cos;
-            const sx = Math.round(lx + scx);
+            // Undulation: bend the body sideways by a travelling wave that
+            // grows toward the tail, so the fish flexes instead of sliding.
+            const along = (ly + scy) / sh;
+            const wave = Math.sin(along * 7.2 - k.swim) * k.amp * along * along;
+            const sx = Math.round(lx - wave + scx);
             const sy = Math.round(ly + scy);
             if (sx < 0 || sx >= sw || sy < 0 || sy >= sh) continue;
             const kind = cells[sy * sw + sx];
             if (kind === EMPTY) continue;
+
             const hash = ((gx * 73856093) ^ (gy * 19349663)) & 1023;
-            if (kind === FIN) {
-              push(k.variety.fin, gx, gy, FIN_AT + (hash % FIN_GLYPHS.length));
-            } else if (kind === EYE) {
-              push('rgba(28, 32, 34, 0.9)', gx, gy, 0);
-            } else {
-              push(
-                kind === PATCH ? k.variety.patch : k.variety.base,
-                gx,
-                gy,
-                hash % BODY_GLYPHS.length,
-              );
-            }
+            const glyph =
+              kind === FIN ? FIN_AT + (hash % FIN_GLYPHS.length) : hash % BODY_GLYPHS.length;
+            push(SHADOW, gx + SHADOW_OFFSET, gy + SHADOW_OFFSET, glyph);
+
+            if (kind === FIN) push(k.variety.fin, gx, gy, glyph);
+            else if (kind === EYE) push(EYE_COLOR, gx, gy, 0);
+            else if (kind === EDGE) push(k.variety.edge, gx, gy, glyph);
+            else if (kind === DORSAL) push(k.variety.dorsal, gx, gy, glyph);
+            else push(kind === PATCH ? k.variety.patch : k.variety.base, gx, gy, glyph);
           }
         }
       }
@@ -272,9 +359,11 @@ export default function Pond() {
       for (let i = 0; i < koi.length; i++) {
         const k = koi[i];
         k.wander += k.wanderSpeed * sec;
-        k.angle += Math.sin(k.wander) * 0.35 * sec;
-        // angle 0 swims "down" the grid, matching the sprite's nose-at-row-0.
-        k.x += Math.sin(k.angle) * k.speed * sec * -1;
+        k.angle += Math.sin(k.wander) * 0.85 * sec;
+        // Speed pulses with the tail beat, the way a koi surges then glides.
+        k.speed = k.cruise + Math.sin(k.swim * 0.5) * k.burst * 0.35;
+        k.swim += (3.2 + k.speed * 0.26) * sec;
+        k.x -= Math.sin(k.angle) * k.speed * sec;
         k.y += Math.cos(k.angle) * k.speed * sec;
         const pad = k.sprite.h;
         if (k.x < -pad || k.x > cols + pad || k.y < -pad || k.y > rows + pad) {
