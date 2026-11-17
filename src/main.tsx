@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { Github, Globe } from 'lucide-react';
+import Pond from './Pond';
 import { links, nav, profile, projects, version, work, type Badge } from './content';
 import './style.css';
 
@@ -7,43 +8,6 @@ import './style.css';
 function Pill({ kind }: { kind: Badge }) {
   if (!kind) return null;
   return <span className={`pill pill-${kind}`}>{kind}</span>;
-}
-
-/**
- * Decorative bubbles drifting up through the page margins. Sizes, offsets and
- * durations are spread by index so the field never looks like a grid. Hidden
- * entirely under `prefers-reduced-motion` (see style.css).
- */
-function Bubbles() {
-  const bubbles = [
-    { left: '4%', size: 86, delay: 0, duration: 26 },
-    { left: '11%', size: 34, delay: 6, duration: 19 },
-    { left: '17%', size: 56, delay: 12, duration: 31 },
-    { left: '7%', size: 22, delay: 17, duration: 16 },
-    { left: '21%', size: 14, delay: 3, duration: 22 },
-    { left: '80%', size: 64, delay: 2, duration: 28 },
-    { left: '88%', size: 28, delay: 9, duration: 18 },
-    { left: '94%', size: 44, delay: 14, duration: 24 },
-    { left: '84%', size: 18, delay: 20, duration: 15 },
-    { left: '75%', size: 36, delay: 24, duration: 33 },
-  ];
-  return (
-    <div className="bubbles" aria-hidden="true">
-      {bubbles.map((b, i) => (
-        <span
-          key={i}
-          className="bubble"
-          style={{
-            left: b.left,
-            width: b.size,
-            height: b.size,
-            animationDelay: `-${b.delay}s`,
-            animationDuration: `${b.duration}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function Header() {
@@ -74,7 +38,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function App() {
   return (
     <div className="page">
-      <Bubbles />
+      <Pond />
       <div className="glass">
         <Header />
 
