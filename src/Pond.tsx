@@ -152,6 +152,13 @@ type Koi = {
   turnRate: number;
   swim: number;
   amp: number;
+  /** 0 glide, 1 full effort. Drives beat rate, body amplitude and thrust. */
+  effort: number;
+  effortTarget: number;
+  effortT: number;
+  /** Smoothed angular velocity, so the body curls into a turn. */
+  curve: number;
+  power: number;
   variety: Variety;
   marks: Mark[];
   grad: CanvasGradient | null;
@@ -189,16 +196,33 @@ function makeKoi(w: number, h: number, seeded: boolean): Koi {
     dart: 0,
     turnRate: 0.55 + Math.random() * 0.45,
     swim: Math.random() * Math.PI * 2,
-    amp: 0.1 + Math.random() * 0.07,
+    amp: 0.12 + Math.random() * 0.07,
+    effort: 0.5,
+    effortTarget: 0.6,
+    effortT: Math.random() * 2,
+    curve: 0,
+    // Tuned so average thrust balances drag at roughly the cruise speed.
+    power: cruise * 2,
     variety,
     marks,
     grad: null,
   };
 }
 
-/** Lateral offset of the spine at u, the travelling wave that bends the fish. */
+/**
+ * Lateral offset of the spine at u (0 nose, 1 tail).
+ *
+ * Three parts, and the second two are what stop it looking like a rigid shape
+ * wiggling: a travelling wave whose amplitude grows toward the tail and with
+ * effort, a steady curl so the body bends into a turn rather than pivoting
+ * flat, and a small head yaw against the stroke, which is the counter-motion a
+ * real fish makes as the tail pushes.
+ */
 function bendAt(k: Koi, u: number) {
-  return Math.sin(u * 4.6 - k.swim) * k.amp * u * u * k.len;
+  const wave = Math.sin(u * 4.6 - k.swim) * k.amp * (0.3 + 0.95 * k.effort) * u * u;
+  const curl = k.curve * u * u * 0.5;
+  const head = Math.sin(-k.swim) * k.amp * 0.22 * (1 - u) * (1 - u);
+  return (wave + curl + head) * k.len;
 }
 
 /**
@@ -763,11 +787,40 @@ export default function Pond() {
         let diff = Math.atan2(wy, wx) - k.angle;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         const maxTurn = k.turnRate * sec;
-        k.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+        const applied = Math.max(-maxTurn, Math.min(maxTurn, diff));
+        k.angle += applied;
 
-        const turning = Math.min(1, Math.abs(diff));
-        k.speed = k.cruise * (k.dart > 0 ? 1.8 : 1) * (call ? 1.7 : 1) * (1 - turning * 0.3);
-        k.swim += (3.4 + k.speed * 0.05) * sec;
+        // Body curls toward however hard it is turning, and relaxes out of it.
+        const angVel = applied / Math.max(sec, 0.001);
+        k.curve += (Math.max(-1.4, Math.min(1.4, angVel)) * 0.3 - k.curve) * Math.min(1, sec * 6);
+
+        /*
+         * Koi coast. Effort wanders between long glides and bursts of work
+         * instead of holding one value, and a called or darting fish commits.
+         */
+        k.effortT -= sec;
+        if (k.effortT <= 0) {
+          k.effortTarget =
+            Math.random() < 0.38 ? 0.1 + Math.random() * 0.16 : 0.5 + Math.random() * 0.5;
+          k.effortT = 0.9 + Math.random() * 2.8;
+        }
+        if (call || k.dart > 0) k.effortTarget = 1;
+        k.effort += (k.effortTarget - k.effort) * Math.min(1, sec * 2.2);
+
+        // Beat faster the harder it works.
+        k.swim += (1.8 + 7.5 * k.effort) * sec;
+
+        /*
+         * Thrust comes in pulses, one per half-stroke, against continuous drag.
+         * Speed is no longer set directly, so the fish accelerates into each
+         * beat and coasts between them, and turning scrubs speed off.
+         */
+        const stroke = Math.abs(Math.sin(k.swim));
+        const thrust = k.power * k.effort * stroke;
+        const drag = (0.9 + 1.6 * Math.abs(k.curve)) * k.speed;
+        k.speed += (thrust - drag) * sec;
+        k.speed = Math.max(1.5, Math.min(k.speed, k.cruise * 2.6));
+
         k.x += Math.cos(k.angle) * k.speed * sec;
         k.y += Math.sin(k.angle) * k.speed * sec;
 
