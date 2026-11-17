@@ -365,7 +365,7 @@
         const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m =>
           MediaRecorder.isTypeSupported(m),
         );
-        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 });
+        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: S.bitrate || 12_000_000 });
         const chunks = [];
         rec.ondataavailable = e => e.data.size && chunks.push(e.data);
 

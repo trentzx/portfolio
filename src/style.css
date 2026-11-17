@@ -366,6 +366,38 @@ html[data-pond='dark'] .glass {
   color: var(--accent);
 }
 
+/* Inline demo: a small chip that opens the recording under the row. */
+.row-demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 3px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 44, 51, 0.22);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row-demo:hover,
+.row-demo.is-open {
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.row-video {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 10px 26px -12px rgba(3, 30, 24, 0.5);
+  background: #0f1419;
+}
+
 /* ---------- glossy pills ---------- */
 
 .pill {

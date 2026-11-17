@@ -68,6 +68,8 @@ export const projects: {
   icon: string;
   /** True when the logo draws its own background tile; false for transparent marks. */
   tile: boolean;
+  /** Optional screen demo, played inline on request. */
+  video: string | null;
   badge: Badge;
   source: string | null;
   demo: string | null;
@@ -80,6 +82,7 @@ export const projects: {
     tech: ['react', 'typescript', 'supabase', 'openalex'],
     icon: './research-finder-mark.png',
     tile: true,
+    video: null,
     badge: null,
     source: null, // private repo
     demo: 'https://guelph-research-finder.vercel.app/',
@@ -92,6 +95,7 @@ export const projects: {
     tech: ['rust', 'cli'],
     icon: './polysh-mark.svg',
     tile: true,
+    video: './polysh-demo.webm',
     badge: null,
     source: 'https://github.com/trentzx/polysh',
     demo: 'https://trentzx.github.io/polysh/',
@@ -104,6 +108,7 @@ export const projects: {
     tech: ['c++', 'yosys', 'sat solving'],
     icon: './limit-mark.svg',
     tile: true,
+    video: null,
     badge: null,
     source: null, // private repo
     demo: null,
@@ -116,6 +121,7 @@ export const projects: {
     tech: ['python', 'sys.monitoring', 'tkinter'],
     icon: './tracekit-mark.svg',
     tile: false,
+    video: null,
     badge: null,
     source: 'https://github.com/trentzx/tracekit',
     demo: null,
@@ -128,6 +134,7 @@ export const projects: {
     tech: ['next.js', 'typescript', 'prisma', 'postgresql'],
     icon: './campusscan-mark.svg',
     tile: false,
+    video: null,
     badge: null,
     source: null, // private repo
     demo: null,
@@ -140,10 +147,11 @@ export const projects: {
     tech: ['vhdl', 'xilinx vivado'],
     icon: './riscv-mark.svg',
     tile: false,
+    video: null,
     badge: 'wip',
     source: null,
     demo: null,
   },
 ];
 
-export const version = 'v3.1.0';
+export const version = 'v3.2.0';

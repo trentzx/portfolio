@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Github, Globe } from 'lucide-react';
+import { Github, Globe, Play } from 'lucide-react';
 import Pond from './Pond';
 import { links, nav, profile, projects, version, work, type Badge } from './content';
 import './style.css';
@@ -36,6 +37,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function App() {
+  // Demos are fetched only when asked for, so the page stays light.
+  const [openDemo, setOpenDemo] = useState<string | null>(null);
+  const calm =
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   return (
     <div className="page">
       <Pond />
@@ -112,8 +118,31 @@ export default function App() {
                     <span key={t}>{t}</span>
                   ))}
                 </div>
+                {p.video && openDemo === p.id && (
+                  <video
+                    className="row-video"
+                    src={p.video}
+                    controls
+                    loop
+                    muted
+                    playsInline
+                    autoPlay={!calm}
+                  />
+                )}
               </div>
               <div className="row-meta row-actions">
+                {p.video && (
+                  <button
+                    type="button"
+                    className={`row-demo ${openDemo === p.id ? 'is-open' : ''}`}
+                    aria-expanded={openDemo === p.id}
+                    aria-label={`${openDemo === p.id ? 'Hide' : 'Watch'} the ${p.title} demo`}
+                    onClick={() => setOpenDemo(openDemo === p.id ? null : p.id)}
+                  >
+                    <Play size={11} />
+                    demo
+                  </button>
+                )}
                 {p.source && (
                   <a href={p.source} target="_blank" rel="noreferrer" aria-label={`${p.title} source on GitHub`}>
                     <Github size={15} />
