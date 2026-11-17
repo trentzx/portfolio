@@ -54,6 +54,7 @@ type Koi = {
   amp: number;
   variety: Variety;
   marks: Mark[];
+  grad: CanvasGradient | null;
 };
 
 type Pad = { x: number; y: number; r: number; rot: number; flower: boolean };
@@ -87,6 +88,7 @@ function makeKoi(w: number, h: number, seeded: boolean): Koi {
     amp: 0.1 + Math.random() * 0.07,
     variety,
     marks,
+    grad: null,
   };
 }
 
@@ -323,10 +325,12 @@ export default function Pond() {
       ctx.save();
       ctx.clip();
 
-      const bodyGrad = ctx.createLinearGradient(0, -k.len * 0.2, 0, k.len * 0.2);
-      bodyGrad.addColorStop(0, k.variety.body);
-      bodyGrad.addColorStop(1, k.variety.belly);
-      ctx.fillStyle = bodyGrad;
+      if (!k.grad) {
+        k.grad = ctx.createLinearGradient(0, -k.len * 0.2, 0, k.len * 0.2);
+        k.grad.addColorStop(0, k.variety.body);
+        k.grad.addColorStop(1, k.variety.belly);
+      }
+      ctx.fillStyle = k.grad;
       ctx.fillRect(-k.len * 0.3, -k.len * 0.5, k.len * 2, k.len);
 
       // Markings ride the same bend, so they stay on the fish as it flexes.
