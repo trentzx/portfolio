@@ -302,6 +302,14 @@ export default function Pond() {
       ctx.save();
       ctx.translate(k.x, k.y);
       ctx.rotate(k.angle);
+      /*
+       * The sprite is built with its nose at the origin and the body running
+       * along +x, but +x is also the direction of travel, which left every
+       * fish swimming tail-first. Mirroring local x puts the body behind the
+       * nose instead; everything drawn in this space (fins, eye, markings)
+       * follows automatically.
+       */
+      ctx.scale(-1, 1);
 
       // Shadow on the pond floor, offset so the fish reads as above it.
       ctx.save();
