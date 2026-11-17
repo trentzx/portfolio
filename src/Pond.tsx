@@ -33,6 +33,10 @@ const FIN = 3;
 const EYE = 4;
 const EDGE = 5;
 const DORSAL = 6;
+const SCALE = 7;
+const RAY = 8;
+const SUMI = 9;
+const MOUTH = 10;
 
 const BODY_GLYPHS = '#%@&8B';
 const FIN_GLYPHS = '+:*=.';
@@ -49,7 +53,11 @@ type Variety = {
   fin: string;
   edge: string;
   dorsal: string;
+  scale: string;
+  ray: string;
+  sumi: string;
   blotches: number;
+  sumiSpots: number;
 };
 
 const VARIETIES: Variety[] = [
@@ -60,6 +68,10 @@ const VARIETIES: Variety[] = [
     fin: 'rgba(126, 144, 136, 0.72)',
     edge: 'rgba(146, 140, 128, 0.9)',
     dorsal: 'rgba(206, 200, 188, 0.95)',
+    scale: 'rgba(214, 209, 197, 0.95)',
+    ray: 'rgba(168, 184, 176, 0.6)',
+    sumi: 'rgba(38, 40, 42, 0.85)',
+    sumiSpots: 2,
     blotches: 3,
   },
   {
@@ -69,6 +81,10 @@ const VARIETIES: Variety[] = [
     fin: 'rgba(130, 136, 110, 0.72)',
     edge: 'rgba(148, 110, 38, 0.9)',
     dorsal: 'rgba(196, 146, 50, 0.95)',
+    scale: 'rgba(198, 146, 48, 0.95)',
+    ray: 'rgba(172, 176, 148, 0.6)',
+    sumi: 'rgba(120, 82, 20, 0.8)',
+    sumiSpots: 0,
     blotches: 1,
   },
   {
@@ -78,6 +94,10 @@ const VARIETIES: Variety[] = [
     fin: 'rgba(110, 134, 144, 0.72)',
     edge: 'rgba(97, 126, 154, 0.9)',
     dorsal: 'rgba(120, 156, 190, 0.95)',
+    scale: 'rgba(124, 160, 194, 0.95)',
+    ray: 'rgba(150, 174, 184, 0.6)',
+    sumi: 'rgba(32, 48, 66, 0.85)',
+    sumiSpots: 1,
     blotches: 2,
   },
   {
@@ -87,6 +107,10 @@ const VARIETIES: Variety[] = [
     fin: 'rgba(124, 136, 132, 0.72)',
     edge: 'rgba(145, 152, 148, 0.9)',
     dorsal: 'rgba(210, 208, 202, 0.95)',
+    scale: 'rgba(216, 214, 206, 0.95)',
+    ray: 'rgba(166, 178, 174, 0.6)',
+    sumi: 'rgba(30, 32, 34, 0.88)',
+    sumiSpots: 2,
     blotches: 2,
   },
 ];
@@ -100,8 +124,9 @@ type Koi = {
   speed: number;
   cruise: number;
   burst: number;
-  wander: number;
-  wanderSpeed: number;
+  target: number;
+  turnRate: number;
+  nextTurn: number;
   swim: number;
   amp: number;
   sprite: Sprite;
@@ -170,6 +195,40 @@ function buildSprite(len: number, variety: Variety): Sprite {
     }
   }
 
+  // Sumi: smaller charcoal spots over the top, the way a sanke carries black
+  // accents on a red-and-white body.
+  for (let i = 0; i < variety.sumiSpots; i++) {
+    const by = (0.18 + Math.random() * 0.5) * h;
+    const bx = cx + (Math.random() - 0.5) * maxHW;
+    const br = maxHW * (0.32 + Math.random() * 0.4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const k = cells[y * w + x];
+        if (k !== BODY && k !== PATCH) continue;
+        const dx = x - bx;
+        const dy = (y - by) * 0.6;
+        if (dx * dx + dy * dy <= br * br) cells[y * w + x] = SUMI;
+      }
+    }
+  }
+
+  // Scale texture: a diagonal lattice across the body, skipped on markings so
+  // the patches stay solid and keep their shape.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (cells[y * w + x] !== BODY) continue;
+      if ((x + y) % 4 === 0 || (x - y + 64) % 7 === 0) cells[y * w + x] = SCALE;
+    }
+  }
+
+  // Fin rays: alternating strands so fins read as webbed rather than solid.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (cells[y * w + x] !== FIN) continue;
+      if ((x + Math.round(y * 0.4)) % 3 === 0) cells[y * w + x] = RAY;
+    }
+  }
+
   // Outline: any body cell with an empty orthogonal neighbour. Gives the fish
   // a readable silhouette instead of a colour blob. Read from a snapshot so
   // freshly marked edges don't cascade inward.
@@ -179,7 +238,7 @@ function buildSprite(len: number, variety: Variety): Sprite {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const k = snapshot[y * w + x];
-      if (k !== BODY && k !== PATCH) continue;
+      if (k !== BODY && k !== PATCH && k !== SCALE && k !== SUMI) continue;
       if (!solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1)) {
         cells[y * w + x] = EDGE;
       }
@@ -191,12 +250,28 @@ function buildSprite(len: number, variety: Variety): Sprite {
     const t = y / (h - 1);
     if (t < 0.18 || t > 0.74) continue;
     const x = Math.round(cx);
-    if (cells[y * w + x] === BODY) cells[y * w + x] = DORSAL;
+    const k = cells[y * w + x];
+    if (k === BODY || k === SCALE) cells[y * w + x] = DORSAL;
   }
   const by = Math.round(h * 0.035);
   for (const side of [-1, 1]) {
     const bx = Math.round(cx + side * (halfWidthAt(0.03) + 1));
     if (bx >= 0 && bx < w && cells[by * w + bx] === EMPTY) cells[by * w + bx] = FIN;
+  }
+
+  // Gill plate: a short arc behind the head, set in from the outline.
+  const gy = Math.round(h * 0.19);
+  const ghw = halfWidthAt(gy / (h - 1) / 0.8);
+  for (let x = 0; x < w; x++) {
+    const ad = Math.abs(x - cx);
+    if (ad > ghw * 0.42 && ad < ghw * 0.82 && cells[gy * w + x] !== EMPTY) {
+      cells[gy * w + x] = EDGE;
+    }
+  }
+
+  // Mouth at the very nose.
+  for (let x = 0; x < w; x++) {
+    if (Math.abs(x - cx) <= 0.6 && cells[0 * w + x] !== EMPTY) cells[0 * w + x] = MOUTH;
   }
 
   // Eyes, just behind the nose.
@@ -214,7 +289,7 @@ function makeKoi(cols: number, rows: number, seeded: boolean): Koi {
   const variety = VARIETIES[(Math.random() * VARIETIES.length) | 0];
   const len = Math.round(36 + Math.random() * 26);
   const angle = Math.random() * Math.PI * 2;
-  const cruise = 5.5 + Math.random() * 5;
+  const cruise = 15 + Math.random() * 11;
   return {
     x: seeded ? Math.random() * cols : cols / 2 - Math.sin(angle) * (cols / 2 + len),
     y: seeded ? Math.random() * rows : rows / 2 + Math.cos(angle) * (rows / 2 + len),
@@ -222,8 +297,9 @@ function makeKoi(cols: number, rows: number, seeded: boolean): Koi {
     speed: cruise,
     cruise,
     burst: 2 + Math.random() * 6,
-    wander: Math.random() * Math.PI * 2,
-    wanderSpeed: 0.3 + Math.random() * 0.55,
+    target: angle,
+    turnRate: 0.45 + Math.random() * 0.4,
+    nextTurn: 1 + Math.random() * 4,
     swim: Math.random() * Math.PI * 2,
     amp: 1.1 + Math.random() * 1.2,
     sprite: buildSprite(len, variety),
@@ -326,13 +402,18 @@ export default function Pond() {
 
             const hash = ((gx * 73856093) ^ (gy * 19349663)) & 1023;
             const glyph =
-              kind === FIN ? FIN_AT + (hash % FIN_GLYPHS.length) : hash % BODY_GLYPHS.length;
+              kind === FIN || kind === RAY
+                ? FIN_AT + (hash % FIN_GLYPHS.length)
+                : hash % BODY_GLYPHS.length;
             push(SHADOW, gx + SHADOW_OFFSET, gy + SHADOW_OFFSET, glyph);
 
             if (kind === FIN) push(k.variety.fin, gx, gy, glyph);
-            else if (kind === EYE) push(EYE_COLOR, gx, gy, 0);
+            else if (kind === RAY) push(k.variety.ray, gx, gy, glyph);
+            else if (kind === EYE || kind === MOUTH) push(EYE_COLOR, gx, gy, 0);
             else if (kind === EDGE) push(k.variety.edge, gx, gy, glyph);
             else if (kind === DORSAL) push(k.variety.dorsal, gx, gy, glyph);
+            else if (kind === SCALE) push(k.variety.scale, gx, gy, glyph);
+            else if (kind === SUMI) push(k.variety.sumi, gx, gy, glyph);
             else push(kind === PATCH ? k.variety.patch : k.variety.base, gx, gy, glyph);
           }
         }
@@ -358,14 +439,42 @@ export default function Pond() {
 
       for (let i = 0; i < koi.length; i++) {
         const k = koi[i];
-        k.wander += k.wanderSpeed * sec;
-        k.angle += Math.sin(k.wander) * 0.85 * sec;
-        // Speed pulses with the tail beat, the way a koi surges then glides.
-        k.speed = k.cruise + Math.sin(k.swim * 0.5) * k.burst * 0.35;
-        k.swim += (3.2 + k.speed * 0.26) * sec;
+
+        // Heading is steered toward a target rather than oscillated. Rotating
+        // every frame is what made them look like they were spinning in place;
+        // a koi holds a line and then commits to a turn.
+        const margin = 14;
+        const nearEdge =
+          k.x < margin || k.x > cols - margin || k.y < margin || k.y > rows - margin;
+        if (nearEdge) {
+          // Turn back toward open water. Heading convention: the fish travels
+          // along (-sin a, cos a), so a heading for (dx, dy) is atan2(-dx, dy).
+          k.target = Math.atan2(-(cols / 2 - k.x), rows / 2 - k.y);
+          k.nextTurn = 1.5 + Math.random() * 2;
+        } else {
+          k.nextTurn -= sec;
+          if (k.nextTurn <= 0) {
+            k.target = k.angle + (Math.random() - 0.5) * 1.6;
+            k.nextTurn = 2 + Math.random() * 5;
+          }
+        }
+
+        // Steer along the shortest arc, capped so turns stay smooth.
+        let diff = k.target - k.angle;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        const maxTurn = k.turnRate * sec;
+        k.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+
+        // Speed pulses with the tail beat, the way a koi surges then glides,
+        // and it slows a little through a turn.
+        const turning = Math.min(1, Math.abs(diff));
+        k.speed = (k.cruise + Math.sin(k.swim * 0.5) * k.burst * 0.3) * (1 - turning * 0.25);
+        k.swim += (4 + k.speed * 0.2) * sec;
         k.x -= Math.sin(k.angle) * k.speed * sec;
         k.y += Math.cos(k.angle) * k.speed * sec;
-        const pad = k.sprite.h;
+
+        // Safety net only: edge steering should keep them in the pond.
+        const pad = k.sprite.h * 1.5;
         if (k.x < -pad || k.x > cols + pad || k.y < -pad || k.y > rows + pad) {
           koi[i] = makeKoi(cols, rows, false);
         }
