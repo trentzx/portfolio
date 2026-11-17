@@ -88,7 +88,7 @@ export const projects: {
     id: 'polysh',
     title: 'polysh',
     blurb: 'one shell, every dialect: type windows cmd or linux commands and polysh translates them, flags included, for the os you are actually on',
-    stats: 'shipped via homebrew and winget',
+    stats: 'install via homebrew, scoop or cargo',
     tech: ['rust', 'cli'],
     icon: './polysh-mark.svg',
     tile: true,
