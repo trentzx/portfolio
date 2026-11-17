@@ -146,4 +146,4 @@ export const projects: {
   },
 ];
 
-export const version = 'v2.5.0';
+export const version = 'v3.0.0';

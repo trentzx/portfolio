@@ -6,11 +6,11 @@
    ============================================================ */
 
 :root {
-  --ink: #13323d;
-  --muted: #3d5a66;
-  --faint: #3d5863;
+  --ink: #0f2c33;
+  --muted: #35505c;
+  --faint: #35505c;
   --accent: #0b7fc4;
-  --rule: rgba(19, 50, 61, 0.16);
+  --rule: rgba(15, 44, 51, 0.2);
   --col: 560px;
   --font: 'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
 }
@@ -31,7 +31,7 @@ body {
   line-height: 1.55;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  background: #103a3c;
+  background: #27795f;
 }
 
 /*
@@ -45,7 +45,7 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(180deg, #134446 0%, #103a3c 55%, #0c2e30 100%);
+  background: linear-gradient(180deg, #2f8d72 0%, #27795f 55%, #1b5c48 100%);
 }
 
 /* ---------- ascii koi pond ---------- */
@@ -74,29 +74,40 @@ body::before {
   width: 100%;
   max-width: var(--col);
   padding: 30px 34px 22px;
-  border-radius: 22px;
+  border-radius: 26px;
   border: 1px solid rgba(255, 255, 255, 0.85);
   /*
-   * No backdrop-filter here on purpose. A blurred backdrop has to be recomputed
-   * every frame that anything moves behind it, which made the whole page stutter
-   * while the pond animates. A flat translucent fill costs nothing and still
-   * lets the koi read faintly through the panel.
+   * Liquid glass. The blur is back, but the pond behind it now redraws its
+   * slow layers only every third frame, so the backdrop is stable most frames
+   * and the blur is not re-resolved on every one.
    */
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.76));
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.58),
+    rgba(255, 255, 255, 0.44) 46%,
+    rgba(255, 255, 255, 0.5)
+  );
+  backdrop-filter: blur(26px) saturate(190%) brightness(1.12);
+  -webkit-backdrop-filter: blur(26px) saturate(190%) brightness(1.12);
   box-shadow:
+    /* specular edge, bright at the top and fading round the rim */
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    0 2px 12px rgba(0, 0, 0, 0.3),
-    0 30px 70px -24px rgba(0, 0, 0, 0.62);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset 0 -14px 28px -22px rgba(255, 255, 255, 0.75),
+    /* the lens itself sitting above the water */
+    0 2px 10px rgba(4, 38, 30, 0.22),
+    0 30px 70px -26px rgba(3, 30, 24, 0.55);
 }
 
-/* The Vista glass highlight across the top third. */
+/* Refractive sheen running off the top-left corner. */
 .glass::before {
   content: '';
   position: absolute;
-  inset: 1px 1px auto;
-  height: 38%;
-  border-radius: 21px 21px 40% 40% / 21px 21px 18% 18%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.08));
+  inset: 1px;
+  border-radius: 25px;
+  background:
+    radial-gradient(120% 70% at 6% -12%, rgba(255, 255, 255, 0.6), transparent 58%),
+    linear-gradient(176deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 34%);
   pointer-events: none;
 }
 
@@ -279,7 +290,7 @@ body::before {
 .row-stats {
   margin-top: 2px;
   font-size: 12.5px;
-  color: #2b5a6e;
+  color: #24525f;
 }
 
 .row-tech {

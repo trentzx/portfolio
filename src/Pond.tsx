@@ -1,229 +1,133 @@
 import { useEffect, useRef } from 'react';
 
 /*
- * ASCII koi pond.
+ * Nagomi-style koi pond, rendered top-down with smooth vector shapes.
  *
- * Every cell on screen is a text glyph. The water is a dense field whose
- * brightness comes from layered sines, stretched along x so the surface breaks
- * into horizontal streaks, darkened toward the middle so the pond reads as
- * deep. Shade is quantised into a handful of steps, which lets the whole field
- * flush with one fillStyle change per step rather than one per cell.
+ * Layers, back to front: a jade water gradient, slow caustic bands, lily pads
+ * with veins and lotus blossoms, schools of fry, then the koi. Everything that
+ * barely moves (water, caustics, pads) renders to an offscreen canvas a few
+ * frames apart and is blitted in between; only the fish are redrawn every
+ * frame. Without that split the caustic strokes alone cost more than a whole
+ * frame's budget.
  *
- * The water layer is redrawn onto an offscreen canvas only every few frames
- * (it moves slowly) and blitted in between; the koi are redrawn every frame on
- * top. Without that split a full-screen glyph field is far too expensive.
- *
- * Koi are generated once as side-view bitmaps and rasterised by
- * inverse-rotating each grid cell back into sprite space, so the glyph grid
- * stays aligned while fish sit at any angle. They move as a boids school.
+ * Each koi is a single filled path built from a flexing spine, so the body
+ * genuinely bends as it swims rather than sliding as a rigid shape. Markings
+ * are drawn in the same local space and clipped to that path, which is what
+ * keeps them sitting on the fish as it turns.
  */
 
-const CELL = 7;
-const FONT = '9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FPS_CAP = 30;
-const WATER_BANDS = 4; // water is refreshed one horizontal band per frame
+const SLOW_EVERY = 3; // frames between water/caustic/pad redraws
 
-// Shade ramp, dark pond floor through lit surface.
-const RAMP: [number, number, number][] = [
-  [16, 58, 60],
-  [20, 70, 72],
-  [24, 84, 86],
-  [30, 100, 100],
-  [36, 116, 115],
-  [44, 134, 130],
-  [54, 152, 146],
-  [68, 172, 163],
-  [86, 192, 181],
-  [110, 212, 199],
-  [142, 230, 216],
-  [190, 246, 236],
-];
-const RAMP_GLYPHS = ['~', '~', '~', '~', '-', '~', '=', '~', 'o', '0', 'O', '0'];
-const RAMP_CSS = RAMP.map(([r, g, b]) => `rgb(${r},${g},${b})`);
-/* Solid pond surface painted under every glyph. Without it half the pixels on
-   screen stay transparent and the field reads as noise on black rather than
-   water: measured against the reference, luminance SD was 58 versus 30. */
-const BASE = 'rgb(16,58,60)';
-/* The darkest ramp steps draw nothing and let BASE show through, which keeps
-   the surface calm and skips the majority of fillText calls. */
-const RAMP_MIN_DRAW = 1;
-
-/* The moon needs colours the water never reaches, or it just blends into the
-   bright end of the ramp and disappears. */
-const MOON_RAMP = [
-  'rgb(150,198,190)',
-  'rgb(196,228,218)',
-  'rgb(230,246,238)',
-  'rgb(252,255,250)',
-];
-const MOON_GLYPHS = ['=', 'o', '0', 'O'];
-const PAD_GREEN = ['rgb(34,78,44)', 'rgb(46,100,54)', 'rgb(62,124,66)'];
-const PAD_GLYPHS = ['o', '0', '@'];
-const BLOSSOM = 'rgb(226,150,170)';
-
-// Cell kinds inside a koi sprite.
-const EMPTY = 0;
-const BODY = 1;
-const PATCH = 2;
-const FIN = 3;
-const EYE = 4;
-const EDGE = 5;
-
-const KOI_GLYPHS = 'o0O8e&';
-const KOI_SHADOW = 'rgba(8,30,32,0.5)';
-const KOI_SHADOW_OFFSET = 2;
-const FIN_GLYPHS = ':;.,';
-
-type Variety = { base: string; patch: string; fin: string; edge: string; blotches: number };
+type Variety = { body: string; belly: string; marks: string[]; markCount: number };
 
 const VARIETIES: Variety[] = [
-  // kohaku
-  {
-    base: 'rgb(252,250,245)',
-    patch: 'rgb(228,54,38)',
-    fin: 'rgb(226,222,214)',
-    edge: 'rgb(26,46,48)',
-    blotches: 3,
-  },
-  // ogon
-  {
-    base: 'rgb(250,196,70)',
-    patch: 'rgb(222,152,32)',
-    fin: 'rgb(236,196,104)',
-    edge: 'rgb(74,48,12)',
-    blotches: 1,
-  },
-  // kohaku, heavier on the red
-  {
-    base: 'rgb(250,248,242)',
-    patch: 'rgb(214,40,32)',
-    fin: 'rgb(224,218,210)',
-    edge: 'rgb(26,46,48)',
-    blotches: 4,
-  },
-  // shiro
-  {
-    base: 'rgb(252,251,247)',
-    patch: 'rgb(34,36,38)',
-    fin: 'rgb(230,228,222)',
-    edge: 'rgb(26,46,48)',
-    blotches: 2,
-  },
+  // kohaku: white with red
+  { body: '#f6f2e9', belly: '#dcd6c8', marks: ['#d8402a', '#c3331f'], markCount: 4 },
+  // showa: white with red and black
+  { body: '#f4f0e7', belly: '#d8d2c4', marks: ['#cf3a26', '#20201e'], markCount: 5 },
+  // ogon: solid orange
+  { body: '#e8913a', belly: '#cf7a2a', marks: ['#d07d26'], markCount: 2 },
+  // bekko: white with charcoal
+  { body: '#f6f3ec', belly: '#dbd6c9', marks: ['#26262a', '#36343a'], markCount: 3 },
 ];
 
-type Sprite = { w: number; h: number; cells: Uint8Array };
-type Pad = { x: number; y: number; r: number; flower: boolean };
+type Mark = { u: number; v: number; rx: number; ry: number; color: string };
 
 type Koi = {
   x: number;
   y: number;
   angle: number;
+  len: number;
   speed: number;
   cruise: number;
   dart: number;
   turnRate: number;
   swim: number;
   amp: number;
-  sprite: Sprite;
   variety: Variety;
+  marks: Mark[];
 };
 
-/** Side-view koi bitmap, nose at x=0, pointing toward +x. */
-function buildSprite(len: number, variety: Variety): Sprite {
-  const maxBH = Math.max(1.6, len * 0.17);
-  const w = len;
-  const h = Math.ceil(maxBH * 4) + 2;
-  const cells = new Uint8Array(w * h);
-  const cy = (h - 1) / 2;
+type Pad = { x: number; y: number; r: number; rot: number; flower: boolean };
+type School = { x: number; y: number; angle: number; n: number; color: string; spread: number };
 
-  const bodyHalf = (v: number) =>
-    maxBH * Math.max(0.2, Math.pow(Math.sin(Math.PI * (0.12 + 0.88 * v)), 0.55));
-
-  const mark = (x: number, y0: number, y1: number, kind: number, onlyEmpty = false) => {
-    for (let y = Math.max(0, Math.ceil(y0)); y <= Math.min(h - 1, Math.floor(y1)); y++) {
-      if (!onlyEmpty || cells[y * w + x] === EMPTY) cells[y * w + x] = kind;
-    }
-  };
-
-  for (let x = 0; x < w; x++) {
-    const u = x / (w - 1);
-    if (u <= 0.76) {
-      const v = u / 0.76;
-      const bh = bodyHalf(v);
-      mark(x, cy - bh, cy + bh, BODY);
-      if (v > 0.32 && v < 0.68) {
-        const fv = Math.sin((Math.PI * (v - 0.32)) / 0.36);
-        mark(x, cy - bh - maxBH * 0.75 * fv, cy - bh, FIN, true);
-      }
-      if (v > 0.22 && v < 0.4) {
-        const fv = Math.sin((Math.PI * (v - 0.22)) / 0.18);
-        mark(x, cy + bh * 0.4, cy + bh + maxBH * 0.7 * fv, FIN, true);
-      }
-    } else {
-      const v = (u - 0.76) / 0.24;
-      const spread = maxBH * (0.25 + 1.5 * v);
-      const notch = maxBH * 0.95 * v * v;
-      for (let y = 0; y < h; y++) {
-        const d = Math.abs(y - cy);
-        if (d <= spread && !(v > 0.35 && d < notch)) cells[y * w + x] = FIN;
-      }
-    }
-  }
-
-  for (let i = 0; i < variety.blotches; i++) {
-    const bx = (0.1 + Math.random() * 0.55) * w;
-    const by = cy + (Math.random() - 0.5) * maxBH;
-    const br = maxBH * (0.75 + Math.random() * 0.7);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (cells[y * w + x] !== BODY) continue;
-        const dx = (x - bx) * 0.65;
-        const dy = y - by;
-        if (dx * dx + dy * dy <= br * br) cells[y * w + x] = PATCH;
-      }
-    }
-  }
-
-  // Outline, so each fish keeps a silhouette against busy water. Read from a
-  // snapshot so freshly marked edges don't cascade inward.
-  const snap = cells.slice();
-  const solid = (x: number, y: number) =>
-    x >= 0 && x < w && y >= 0 && y < h && snap[y * w + x] !== EMPTY;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const k = snap[y * w + x];
-      if (k === EMPTY || k === FIN) continue;
-      if (!solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1)) {
-        cells[y * w + x] = EDGE;
-      }
-    }
-  }
-
-  const ex = Math.round(w * 0.12);
-  const ey = Math.round(cy - bodyHalf(ex / (w - 1) / 0.76) * 0.3);
-  if (ey >= 0 && ey < h && cells[ey * w + ex] !== EMPTY) cells[ey * w + ex] = EYE;
-
-  return { w, h, cells };
-}
-
-function makeKoi(cols: number, rows: number, seeded: boolean): Koi {
+function makeKoi(w: number, h: number, seeded: boolean): Koi {
   const variety = VARIETIES[(Math.random() * VARIETIES.length) | 0];
-  const len = Math.round(24 + Math.random() * 12);
+  const len = 54 + Math.random() * 46;
   const angle = Math.random() * Math.PI * 2;
-  const cruise = 7 + Math.random() * 6;
+  const cruise = 16 + Math.random() * 16;
+  const marks: Mark[] = [];
+  for (let i = 0; i < variety.markCount; i++) {
+    marks.push({
+      u: 0.1 + Math.random() * 0.62,
+      v: (Math.random() - 0.5) * 0.7,
+      rx: 0.07 + Math.random() * 0.12,
+      ry: 0.1 + Math.random() * 0.18,
+      color: variety.marks[(Math.random() * variety.marks.length) | 0],
+    });
+  }
   return {
-    x: seeded ? Math.random() * cols : cols / 2 - Math.cos(angle) * (cols / 2 + len),
-    y: seeded ? Math.random() * rows : rows / 2 - Math.sin(angle) * (rows / 2 + len),
+    x: seeded ? Math.random() * w : w / 2 - Math.cos(angle) * (w / 2 + len * 2),
+    y: seeded ? Math.random() * h : h / 2 - Math.sin(angle) * (h / 2 + len * 2),
     angle,
+    len,
     speed: cruise,
     cruise,
     dart: 0,
-    turnRate: 0.7 + Math.random() * 0.5,
+    turnRate: 0.55 + Math.random() * 0.45,
     swim: Math.random() * Math.PI * 2,
-    amp: 0.5 + Math.random() * 0.6,
-    sprite: buildSprite(len, variety),
+    amp: 0.1 + Math.random() * 0.07,
     variety,
+    marks,
   };
+}
+
+/** Lateral offset of the spine at u, the travelling wave that bends the fish. */
+function bendAt(k: Koi, u: number) {
+  return Math.sin(u * 4.6 - k.swim) * k.amp * u * u * k.len;
+}
+
+/**
+ * Traces a koi outline into the current path, in local space: nose at origin,
+ * tail toward +x.
+ */
+function koiPath(ctx: CanvasRenderingContext2D, k: Koi, scale = 1) {
+  const L = k.len * scale;
+  const SEG = 14;
+  const spine: { x: number; y: number; hw: number }[] = [];
+  for (let i = 0; i <= SEG; i++) {
+    const u = i / SEG;
+    // Rounded head, widest around a third, tapering to the peduncle.
+    const hw = Math.pow(Math.sin(Math.PI * (0.12 + 0.88 * u)), 0.62) * L * 0.17;
+    spine.push({ x: u * L, y: bendAt(k, u) * scale, hw: Math.max(hw, L * 0.012) });
+  }
+
+  const sideways = (i: number, sign: number) => {
+    const p = spine[i];
+    const prev = spine[Math.max(0, i - 1)];
+    const nx = p.y - prev.y;
+    const ny = -(p.x - prev.x);
+    const nl = Math.hypot(nx, ny) || 1;
+    return [p.x + (nx / nl) * p.hw * sign, p.y + (ny / nl) * p.hw * sign] as const;
+  };
+
+  ctx.beginPath();
+  for (let i = 0; i < spine.length; i++) {
+    const [px, py] = sideways(i, 1);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  // Tail fan.
+  const tip = spine[spine.length - 1];
+  ctx.lineTo(tip.x + L * 0.22, tip.y - L * 0.15);
+  ctx.lineTo(tip.x + L * 0.12, tip.y);
+  ctx.lineTo(tip.x + L * 0.22, tip.y + L * 0.15);
+  for (let i = spine.length - 1; i >= 0; i--) {
+    const [px, py] = sideways(i, -1);
+    ctx.lineTo(px, py);
+  }
+  ctx.closePath();
 }
 
 export default function Pond() {
@@ -232,237 +136,238 @@ export default function Pond() {
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: true });
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
-
-    const water = document.createElement('canvas');
-    const wctx = water.getContext('2d', { alpha: true });
-    if (!wctx) return;
+    const back = document.createElement('canvas');
+    const bctx = back.getContext('2d', { alpha: false });
+    if (!bctx) return;
 
     const calm = matchMedia('(prefers-reduced-motion: reduce)');
-    let cols = 0;
-    let rows = 0;
-    let dpr = 1;
-    let vw = 0;
-    let vh = 0;
+    let w = 0;
+    let h = 0;
     let koi: Koi[] = [];
     let pads: Pad[] = [];
-    let moonX = 0;
-    let moonY = 0;
-    let moonR = 0;
+    let schools: School[] = [];
     let raf = 0;
     let last = 0;
     let t = 0;
     let frame = 0;
 
-    // Reused every frame so the render path allocates nothing.
-    const shadeBuckets: number[][] = RAMP.map(() => []);
-    const moonBuckets: number[][] = MOON_RAMP.map(() => []);
-    const koiBuckets = new Map<string, number[]>();
-    koiBuckets.set(KOI_SHADOW, []);
-
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      vw = window.innerWidth;
-      vh = window.innerHeight;
-      for (const c of [canvas, water]) {
-        c.width = Math.round(vw * dpr);
-        c.height = Math.round(vh * dpr);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = window.innerHeight;
+      for (const c of [canvas, back]) {
+        c.width = Math.round(w * dpr);
+        c.height = Math.round(h * dpr);
       }
-      canvas.style.width = `${vw}px`;
-      canvas.style.height = `${vh}px`;
-      for (const c of [ctx, wctx]) {
-        c.setTransform(dpr, 0, 0, dpr, 0, 0);
-        c.font = FONT;
-        c.textBaseline = 'top';
-      }
-      cols = Math.ceil(vw / CELL) + 1;
-      rows = Math.ceil(vh / CELL) + 1;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const want = Math.max(6, Math.min(14, Math.round((cols * rows) / 2600)));
-      koi = Array.from({ length: want }, () => makeKoi(cols, rows, true));
+      koi = Array.from({ length: Math.max(7, Math.min(16, Math.round((w * h) / 110000))) }, () =>
+        makeKoi(w, h, true),
+      );
 
-      const padCount = Math.max(4, Math.min(11, Math.round((cols * rows) / 3400)));
-      pads = Array.from({ length: padCount }, () => ({
-        x: Math.random() * cols,
-        y: Math.random() * rows,
-        r: 3.5 + Math.random() * 4,
-        flower: Math.random() < 0.45,
-      }));
-
-      moonR = Math.min(cols, rows) * 0.3;
-      const rightSide = Math.random() < 0.5;
-      moonX = cols * (rightSide ? 0.78 + Math.random() * 0.12 : 0.1 + Math.random() * 0.12);
-      moonY = rows * (0.26 + Math.random() * 0.34);
-    };
-
-    const drawWater = (band: number) => {
-      const bandRows = Math.ceil(rows / WATER_BANDS);
-      const ry0 = band * bandRows;
-      const ry1 = Math.min(rows - 1, ry0 + bandRows - 1);
-      if (ry0 > ry1) return;
-      wctx.clearRect(0, ry0 * CELL, vw, (ry1 - ry0 + 1) * CELL);
-      wctx.fillStyle = BASE;
-      wctx.fillRect(0, ry0 * CELL, vw, (ry1 - ry0 + 1) * CELL);
-      for (const b of shadeBuckets) b.length = 0;
-      for (const b of moonBuckets) b.length = 0;
-
-      const cx = cols / 2;
-      const cy = rows / 2;
-      const norm = 1 / Math.hypot(cx, cy);
-
-      for (let y = ry0; y <= ry1; y++) {
-        for (let x = 0; x < cols; x++) {
-          // Low frequency across x, high across y: each row stays coherent so
-          // the surface breaks into horizontal streaks rather than noise.
-          const n =
-            Math.sin(x * 0.055 + y * 0.42 + t * 0.5) * 0.44 +
-            Math.sin(x * 0.12 - y * 0.27 + t * 0.32) * 0.26 +
-            Math.sin(x * 0.02 + y * 0.63 - t * 0.21) * 0.16;
-
-          // Darker toward the middle, so the pond reads as deep water with a
-          // lit rim rather than a flat field.
-          const r = Math.hypot(x - cx, y - cy) * norm;
-          let shade = 0.2 + (n * 0.5 + 0.5) * (0.26 + 0.2 * r);
-
-          // Moon reflection, broken into bands by the surface. Bright cells
-          // take the moon's own palette and skip the water glyph entirely;
-          // the faint rim just lifts the water a little, as a halo.
-          const md = Math.hypot((x - moonX) * 1.1, y - moonY);
-          if (md < moonR) {
-            const fall = 1 - md / moonR;
-            const core = Math.min(1, fall / 0.5);
-            const amt = core * core * (0.5 + 0.5 * Math.sin(y * 0.8));
-            if (amt > 0.045) {
-              const mi = Math.min(MOON_RAMP.length - 1, (amt * 3.4 * MOON_RAMP.length) | 0);
-              moonBuckets[mi].push(x, y);
-              continue;
-            }
-            shade += amt * 0.8;
-          }
-
-          const idx = Math.max(0, Math.min(RAMP.length - 1, (shade * RAMP.length) | 0));
-          shadeBuckets[idx].push(x, y);
-        }
-      }
-
-      for (let i = RAMP_MIN_DRAW; i < shadeBuckets.length; i++) {
-        const b = shadeBuckets[i];
-        if (!b.length) continue;
-        wctx.fillStyle = RAMP_CSS[i];
-        const g = RAMP_GLYPHS[i];
-        for (let j = 0; j < b.length; j += 2) {
-          wctx.fillText(g, b[j] * CELL, b[j + 1] * CELL);
-        }
-      }
-
-      for (let i = 0; i < moonBuckets.length; i++) {
-        const b = moonBuckets[i];
-        if (!b.length) continue;
-        wctx.fillStyle = MOON_RAMP[i];
-        const g = MOON_GLYPHS[i];
-        for (let j = 0; j < b.length; j += 2) {
-          wctx.fillText(g, b[j] * CELL, b[j + 1] * CELL);
-        }
-      }
-
-      // Lily pads sit on the surface, so they draw over the water field.
-      for (const p of pads) {
-        const x0 = Math.max(0, Math.floor(p.x - p.r));
-        const x1 = Math.min(cols - 1, Math.ceil(p.x + p.r));
-        const y0 = Math.max(ry0, Math.floor(p.y - p.r * 0.72));
-        const y1 = Math.min(ry1, Math.ceil(p.y + p.r * 0.72));
-        for (let y = y0; y <= y1; y++) {
-          for (let x = x0; x <= x1; x++) {
-            const dx = x - p.x;
-            const dy = (y - p.y) / 0.72;
-            const d = Math.hypot(dx, dy);
-            if (d > p.r) continue;
-            // Notch cut out of one side, the way a lily pad is split.
-            if (dx > 0 && Math.abs(dy) < p.r * 0.22 && d > p.r * 0.3) continue;
-            const hash = ((x * 73856093) ^ (y * 19349663)) & 1023;
-            wctx.fillStyle = PAD_GREEN[hash % PAD_GREEN.length];
-            wctx.fillText(PAD_GLYPHS[hash % PAD_GLYPHS.length], x * CELL, y * CELL);
-          }
-        }
-        if (p.flower && Math.round(p.y) >= ry0 && Math.round(p.y) <= ry1) {
-          wctx.fillStyle = BLOSSOM;
-          wctx.fillText('*', Math.round(p.x) * CELL, Math.round(p.y) * CELL);
-        }
-      }
-    };
-
-    const pushKoi = (color: string, gx: number, gy: number, glyph: number) => {
-      let b = koiBuckets.get(color);
-      if (!b) koiBuckets.set(color, (b = []));
-      b.push(gx, gy, glyph);
-    };
-
-    const drawKoi = () => {
-      koiBuckets.forEach(b => (b.length = 0));
-
-      for (const k of koi) {
-        const { w: sw, h: sh, cells } = k.sprite;
-        const scx = (sw - 1) / 2;
-        const scy = (sh - 1) / 2;
-        const cos = Math.cos(k.angle);
-        const sin = Math.sin(k.angle);
-        // A side-view fish must never swim upside down, so mirror it across its
-        // long axis once the heading passes vertical.
-        const flip = cos < 0;
-        const reach = Math.ceil(Math.hypot(sw, sh) / 2) + 2;
-
-        const gx0 = Math.max(0, Math.floor(k.x - reach));
-        const gx1 = Math.min(cols - 1, Math.ceil(k.x + reach));
-        const gy0 = Math.max(0, Math.floor(k.y - reach));
-        const gy1 = Math.min(rows - 1, Math.ceil(k.y + reach));
-
-        for (let gy = gy0; gy <= gy1; gy++) {
-          for (let gx = gx0; gx <= gx1; gx++) {
-            const dx = gx - k.x;
-            const dy = gy - k.y;
-            const lx = dx * cos + dy * sin;
-            let ly = -dx * sin + dy * cos;
-            if (flip) ly = -ly;
-            // Undulation: bend the body across its axis by a travelling wave
-            // that grows toward the tail, so the fish flexes as it swims.
-            const along = (lx + scx) / sw;
-            const wave = Math.sin(along * 6 - k.swim) * k.amp * along * along;
-            const sx = Math.round(lx + scx);
-            const sy = Math.round(ly - wave + scy);
-            if (sx < 0 || sx >= sw || sy < 0 || sy >= sh) continue;
-            const kind = cells[sy * sw + sx];
-            if (kind === EMPTY) continue;
-            const hash = ((gx * 73856093) ^ (gy * 19349663)) & 1023;
-            pushKoi(KOI_SHADOW, gx + KOI_SHADOW_OFFSET, gy + KOI_SHADOW_OFFSET, hash % KOI_GLYPHS.length);
-            if (kind === EYE) pushKoi('rgb(16,20,22)', gx, gy, -1);
-            else if (kind === FIN) pushKoi(k.variety.fin, gx, gy, -2 - (hash % FIN_GLYPHS.length));
-            else if (kind === EDGE) pushKoi(k.variety.edge, gx, gy, hash % KOI_GLYPHS.length);
-            else if (kind === PATCH) pushKoi(k.variety.patch, gx, gy, hash % KOI_GLYPHS.length);
-            else pushKoi(k.variety.base, gx, gy, hash % KOI_GLYPHS.length);
-          }
-        }
-      }
-
-      koiBuckets.forEach((b, color) => {
-        if (!b.length) return;
-        ctx.fillStyle = color;
-        for (let i = 0; i < b.length; i += 3) {
-          const code = b[i + 2];
-          const g = code === -1 ? '@' : code <= -2 ? FIN_GLYPHS[-code - 2] : KOI_GLYPHS[code];
-          ctx.fillText(g, b[i] * CELL, b[i + 1] * CELL);
-        }
+      // Pads cluster toward the edges, keeping the middle of the pond open.
+      const padCount = Math.max(6, Math.min(16, Math.round((w * h) / 95000)));
+      pads = Array.from({ length: padCount }, () => {
+        const left = Math.random() < 0.5;
+        const inset = Math.random() * w * 0.3;
+        return {
+          x: (left ? inset : w - inset) + (Math.random() - 0.5) * 80,
+          y: Math.random() * h,
+          r: 46 + Math.random() * 54,
+          rot: Math.random() * Math.PI * 2,
+          flower: Math.random() < 0.4,
+        };
       });
+
+      schools = Array.from({ length: 3 }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        angle: Math.random() * Math.PI * 2,
+        n: 14 + ((Math.random() * 16) | 0),
+        color: Math.random() < 0.5 ? 'rgba(248,214,96,0.85)' : 'rgba(240,150,170,0.8)',
+        spread: 26 + Math.random() * 22,
+      }));
+    };
+
+    const drawPad = (c: CanvasRenderingContext2D, p: Pad) => {
+      c.save();
+      c.translate(p.x, p.y);
+      c.rotate(p.rot);
+      // Soft shade under the pad, so it floats on the water rather than in it.
+      c.fillStyle = 'rgba(6,46,36,0.3)';
+      c.beginPath();
+      c.ellipse(5, 9, p.r, p.r * 0.92, 0, 0, Math.PI * 2);
+      c.fill();
+
+      const g = c.createRadialGradient(-p.r * 0.3, -p.r * 0.3, p.r * 0.15, 0, 0, p.r);
+      g.addColorStop(0, '#2f6f4a');
+      g.addColorStop(1, '#17412c');
+      c.fillStyle = g;
+      c.beginPath();
+      // The wedge missing from one side is what reads as a lily pad.
+      c.ellipse(0, 0, p.r, p.r * 0.92, 0, 0.28, Math.PI * 2 - 0.28);
+      c.lineTo(0, 0);
+      c.closePath();
+      c.fill();
+
+      c.strokeStyle = 'rgba(150,215,170,0.22)';
+      c.lineWidth = 1.4;
+      for (let i = 0; i < 9; i++) {
+        const a = 0.34 + (i / 8) * (Math.PI * 2 - 0.68);
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.lineTo(Math.cos(a) * p.r * 0.93, Math.sin(a) * p.r * 0.86);
+        c.stroke();
+      }
+      c.restore();
+
+      if (p.flower) {
+        c.save();
+        c.translate(p.x - p.r * 0.1, p.y - p.r * 0.1);
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          c.fillStyle = i % 2 ? '#f27fb4' : '#e85f93';
+          c.beginPath();
+          c.ellipse(Math.cos(a) * 9, Math.sin(a) * 9, 8, 4, a, 0, Math.PI * 2);
+          c.fill();
+        }
+        c.fillStyle = '#ffe9a8';
+        c.beginPath();
+        c.arc(0, 0, 5, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+    };
+
+    const drawBack = () => {
+      const g = bctx.createLinearGradient(0, 0, w * 0.4, h);
+      g.addColorStop(0, '#2f8d72');
+      g.addColorStop(0.5, '#27795f');
+      g.addColorStop(1, '#1b5c48');
+      bctx.fillStyle = g;
+      bctx.fillRect(0, 0, w, h);
+
+      const glow = bctx.createRadialGradient(
+        w * 0.42,
+        h * 0.4,
+        10,
+        w * 0.42,
+        h * 0.4,
+        Math.max(w, h) * 0.6,
+      );
+      glow.addColorStop(0, 'rgba(142,226,192,0.3)');
+      glow.addColorStop(1, 'rgba(142,226,192,0)');
+      bctx.fillStyle = glow;
+      bctx.fillRect(0, 0, w, h);
+
+      // Caustics: slow bands of light bending across the surface.
+      bctx.lineCap = 'round';
+      const bands = Math.ceil(h / 46) + 2;
+      for (let i = 0; i < bands; i++) {
+        const base = i * 46;
+        bctx.beginPath();
+        for (let x = -40; x <= w + 40; x += 22) {
+          const y =
+            base +
+            Math.sin(x * 0.0065 + t * 0.34 + i * 0.7) * 24 +
+            Math.sin(x * 0.019 - t * 0.22 + i) * 9;
+          if (x <= -40) bctx.moveTo(x, y);
+          else bctx.lineTo(x, y);
+        }
+        bctx.strokeStyle = i % 2 ? 'rgba(186,255,222,0.055)' : 'rgba(212,255,236,0.085)';
+        bctx.lineWidth = 7 + Math.sin(i * 1.3 + t * 0.2) * 4;
+        bctx.stroke();
+      }
+
+      for (const p of pads) drawPad(bctx, p);
+    };
+
+    const drawKoi = (k: Koi) => {
+      ctx.save();
+      ctx.translate(k.x, k.y);
+      ctx.rotate(k.angle);
+
+      // Shadow on the pond floor, offset so the fish reads as above it.
+      ctx.save();
+      ctx.translate(k.len * 0.1, k.len * 0.22);
+      ctx.fillStyle = 'rgba(5,40,31,0.26)';
+      koiPath(ctx, k, 1.03);
+      ctx.fill();
+      ctx.restore();
+
+      koiPath(ctx, k);
+      ctx.save();
+      ctx.clip();
+
+      const bodyGrad = ctx.createLinearGradient(0, -k.len * 0.2, 0, k.len * 0.2);
+      bodyGrad.addColorStop(0, k.variety.body);
+      bodyGrad.addColorStop(1, k.variety.belly);
+      ctx.fillStyle = bodyGrad;
+      ctx.fillRect(-k.len * 0.3, -k.len * 0.5, k.len * 2, k.len);
+
+      // Markings ride the same bend, so they stay on the fish as it flexes.
+      for (const m of k.marks) {
+        ctx.fillStyle = m.color;
+        ctx.beginPath();
+        ctx.ellipse(
+          m.u * k.len,
+          bendAt(k, m.u) + m.v * k.len * 0.17,
+          m.rx * k.len,
+          m.ry * k.len,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Pectoral fins catching a little light.
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(k.len * 0.3, -k.len * 0.2, k.len * 0.14, k.len * 0.07, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(k.len * 0.3, k.len * 0.2, k.len * 0.14, k.len * 0.07, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(20,24,22,0.75)';
+      ctx.beginPath();
+      ctx.arc(k.len * 0.1, -k.len * 0.07, k.len * 0.022, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(k.len * 0.1, k.len * 0.07, k.len * 0.022, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    };
+
+    const drawSchool = (s: School) => {
+      ctx.fillStyle = s.color;
+      for (let i = 0; i < s.n; i++) {
+        const a = i * 2.4;
+        const d = (i / s.n) * s.spread;
+        const x = s.x + Math.cos(s.angle) * d + Math.cos(a + t * 2) * 5;
+        const y = s.y + Math.sin(s.angle) * d + Math.sin(a + t * 2) * 5;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 3.1, 1.5, s.angle, 0, Math.PI * 2);
+        ctx.fill();
+      }
     };
 
     const render = () => {
-      drawWater(frame % WATER_BANDS);
-      ctx.clearRect(0, 0, vw, vh);
+      if (frame % SLOW_EVERY === 0) drawBack();
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(water, 0, 0);
+      ctx.drawImage(back, 0, 0);
       ctx.restore();
-      drawKoi();
+      for (const s of schools) drawSchool(s);
+      for (const k of koi) drawKoi(k);
     };
 
     const step = (now: number) => {
@@ -474,14 +379,11 @@ export default function Pond() {
       t += sec;
       frame++;
 
-      const NEIGH2 = 40 * 40;
-      const SEP2 = 13 * 13;
+      const NEIGH2 = 190 * 190;
+      const SEP2 = 62 * 62;
 
       for (let i = 0; i < koi.length; i++) {
         const k = koi[i];
-
-        // Boids: alignment and cohesion give the school a shared intent,
-        // separation stops them stacking up.
         let sepX = 0;
         let sepY = 0;
         let aliX = 0;
@@ -508,40 +410,50 @@ export default function Pond() {
           }
         }
 
-        let wx = Math.cos(k.angle) * 1.25;
-        let wy = Math.sin(k.angle) * 1.25;
+        let wx = Math.cos(k.angle) * 1.3;
+        let wy = Math.sin(k.angle) * 1.3;
         if (n) {
           const cl = Math.hypot(cohX, cohY) || 1;
-          wx += (cohX / cl) * 0.4 + (aliX / n) * 0.7 + sepX * 1.1;
-          wy += (cohY / cl) * 0.4 + (aliY / n) * 0.7 + sepY * 1.1;
+          wx += (cohX / cl) * 0.35 + (aliX / n) * 0.7 + sepX * 1.15;
+          wy += (cohY / cl) * 0.35 + (aliY / n) * 0.7 + sepY * 1.15;
         }
 
-        const margin = 14;
-        if (k.x < margin) wx += 1.6;
-        if (k.x > cols - margin) wx -= 1.6;
-        if (k.y < margin) wy += 1.6;
-        if (k.y > rows - margin) wy -= 1.6;
+        const margin = 90;
+        if (k.x < margin) wx += 1.7;
+        if (k.x > w - margin) wx -= 1.7;
+        if (k.y < margin) wy += 1.7;
+        if (k.y > h - margin) wy -= 1.7;
 
         k.dart -= sec;
-        if (k.dart < -4 && Math.random() < 0.012) k.dart = 0.5 + Math.random() * 0.8;
+        if (k.dart < -5 && Math.random() < 0.01) k.dart = 0.6 + Math.random() * 0.9;
 
-        const target = Math.atan2(wy, wx);
-        let diff = target - k.angle;
+        let diff = Math.atan2(wy, wx) - k.angle;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         const maxTurn = k.turnRate * sec;
         k.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
 
         const turning = Math.min(1, Math.abs(diff));
-        k.speed = k.cruise * (k.dart > 0 ? 1.9 : 1) * (1 - turning * 0.3);
-        k.swim += (4 + k.speed * 0.3) * sec;
+        k.speed = k.cruise * (k.dart > 0 ? 1.8 : 1) * (1 - turning * 0.3);
+        k.swim += (3.4 + k.speed * 0.05) * sec;
         k.x += Math.cos(k.angle) * k.speed * sec;
         k.y += Math.sin(k.angle) * k.speed * sec;
 
-        const pad = k.sprite.w * 2;
-        if (k.x < -pad || k.x > cols + pad || k.y < -pad || k.y > rows + pad) {
-          koi[i] = makeKoi(cols, rows, false);
+        const pad = k.len * 3;
+        if (k.x < -pad || k.x > w + pad || k.y < -pad || k.y > h + pad) {
+          koi[i] = makeKoi(w, h, false);
         }
       }
+
+      for (const s of schools) {
+        s.angle += Math.sin(t * 0.5 + s.spread) * 0.4 * sec;
+        s.x += Math.cos(s.angle) * 22 * sec;
+        s.y += Math.sin(s.angle) * 22 * sec;
+        if (s.x < -80) s.x = w + 80;
+        if (s.x > w + 80) s.x = -80;
+        if (s.y < -80) s.y = h + 80;
+        if (s.y > h + 80) s.y = -80;
+      }
+
       render();
     };
 
@@ -558,16 +470,19 @@ export default function Pond() {
     const onVisibility = () => (document.hidden ? stop() : start());
     const onResize = () => {
       resize();
+      drawBack();
       render();
     };
     const onCalmChange = () => {
       stop();
       resize();
+      drawBack();
       render();
       start();
     };
 
     resize();
+    drawBack();
     render();
     start();
 
