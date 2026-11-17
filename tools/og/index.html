@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OG card</title>
+    <style>
+      html,body{margin:0;background:#0d1a18;display:grid;place-items:center;min-height:100vh}
+      canvas{max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="1200" height="630"></canvas>
+    <script>
+      /*
+       * Link-preview card. The pond is the site's signature, so it is the
+       * backdrop; everything on top is sized to stay legible when LinkedIn
+       * renders this a third of its real width in the Featured carousel.
+       */
+      const c = document.getElementById('c');
+      const x = c.getContext('2d');
+      const W = 1200, H = 630;
+
+      const load = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
+
+      function roundRect(ctx, rx, ry, rw, rh, r) {
+        ctx.beginPath();
+        ctx.moveTo(rx + r, ry);
+        ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, r);
+        ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, r);
+        ctx.arcTo(rx, ry + rh, rx, ry, r);
+        ctx.arcTo(rx, ry, rx + rw, ry, r);
+        ctx.closePath();
+      }
+
+      async function draw() {
+        const bg = await load('pond-bg.png');
+        x.drawImage(bg, 0, 0, W, H);
+
+        // Scrim, heaviest on the left where the type sits.
+        const g = x.createLinearGradient(0, 0, W, 0);
+        g.addColorStop(0, 'rgba(6,30,26,0.86)');
+        g.addColorStop(0.55, 'rgba(6,30,26,0.55)');
+        g.addColorStop(1, 'rgba(6,30,26,0.18)');
+        x.fillStyle = g;
+        x.fillRect(0, 0, W, H);
+
+        const L = 78;
+        const marks = await Promise.all([
+          load('../../public/research-finder-mark.png'),
+          load('../../public/polysh-mark.svg'),
+          load('../../public/limit-mark.svg'),
+          load('../../public/tracekit-mark.svg'),
+          load('../../public/campusscan-mark.svg'),
+          load('../../public/riscv-mark.svg'),
+        ]);
+        const avatar = await load('../../public/avatar-mii-final.png');
+
+        // Avatar
+        x.save();
+        x.beginPath();
+        x.arc(L + 34, 104, 34, 0, Math.PI * 2);
+        x.closePath();
+        x.clip();
+        x.fillStyle = '#e8f4ef';
+        x.fillRect(L, 70, 68, 68);
+        x.drawImage(avatar, L, 70, 68, 68);
+        x.restore();
+        x.strokeStyle = 'rgba(255,255,255,0.55)';
+        x.lineWidth = 2;
+        x.beginPath();
+        x.arc(L + 34, 104, 34, 0, Math.PI * 2);
+        x.stroke();
+
+        x.fillStyle = 'rgba(214,240,230,0.92)';
+        x.font = '500 23px ui-sans-serif, system-ui, Segoe UI, sans-serif';
+        x.fillText('trentonscott.dev', L + 86, 112);
+
+        x.fillStyle = '#ffffff';
+        x.font = '600 84px ui-sans-serif, system-ui, Segoe UI, sans-serif';
+        x.fillText('trenton scott', L, 258);
+
+        x.fillStyle = '#7ee6b4';
+        x.fillRect(L, 288, 132, 6);
+
+        x.fillStyle = 'rgba(226,245,238,0.95)';
+        x.font = '400 33px ui-sans-serif, system-ui, Segoe UI, sans-serif';
+        x.fillText('computer engineering @ guelph', L, 350);
+        x.fillStyle = 'rgba(206,232,224,0.86)';
+        x.font = '400 27px ui-sans-serif, system-ui, Segoe UI, sans-serif';
+        x.fillText('developer tooling · search · rtl security · risc-v', L, 392);
+
+        // Project marks as proof of work.
+        const S = 58, GAP = 18;
+        marks.forEach((m, i) => {
+          const mx = L + i * (S + GAP);
+          const my = 470;
+          x.save();
+          roundRect(x, mx, my, S, S, 13);
+          x.fillStyle = 'rgba(255,255,255,0.1)';
+          x.fill();
+          x.clip();
+          x.drawImage(m, mx, my, S, S);
+          x.restore();
+          x.strokeStyle = 'rgba(255,255,255,0.22)';
+          x.lineWidth = 1;
+          roundRect(x, mx + 0.5, my + 0.5, S - 1, S - 1, 13);
+          x.stroke();
+        });
+
+        window.__png = c.toDataURL('image/png');
+        window.__jpg = c.toDataURL('image/jpeg', 0.92);
+        window.__done = true;
+      }
+      window.__done = false;
+      draw();
+    </script>
+  </body>
+</html>
