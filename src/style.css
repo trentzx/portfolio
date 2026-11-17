@@ -7,8 +7,8 @@
 
 :root {
   --ink: #0f2c33;
-  --muted: #35505c;
-  --faint: #35505c;
+  --muted: #304954;
+  --faint: #304954;
   --accent: #0b7fc4;
   --rule: rgba(15, 44, 51, 0.2);
   --col: 560px;
@@ -57,6 +57,10 @@ body::before {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  /* The canvas is rendered at a quarter size; keep the upscale hard-edged
+     instead of letting the browser smooth the pixels away. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* ---------- page shell ---------- */
@@ -290,7 +294,7 @@ body::before {
 .row-stats {
   margin-top: 2px;
   font-size: 12.5px;
-  color: #24525f;
+  color: #1f4a57;
 }
 
 .row-tech {

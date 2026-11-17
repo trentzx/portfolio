@@ -18,6 +18,13 @@ import { useEffect, useRef } from 'react';
 
 const FPS_CAP = 30;
 const SLOW_EVERY = 3; // frames between water/caustic/pad redraws
+/*
+ * Everything renders into a buffer this many times smaller than the viewport
+ * and is scaled back up with nearest-neighbour, which is what gives the scene
+ * its chunky pixel edges. It also means roughly a sixteenth of the fill cost,
+ * so the whole pond gets cheaper as well as blockier.
+ */
+const PIXEL = 4;
 
 type Variety = { body: string; belly: string; marks: string[]; markCount: number };
 
@@ -54,7 +61,7 @@ type School = { x: number; y: number; angle: number; n: number; color: string; s
 
 function makeKoi(w: number, h: number, seeded: boolean): Koi {
   const variety = VARIETIES[(Math.random() * VARIETIES.length) | 0];
-  const len = 54 + Math.random() * 46;
+  const len = 76 + Math.random() * 58;
   const angle = Math.random() * Math.PI * 2;
   const cruise = 16 + Math.random() * 16;
   const marks: Mark[] = [];
@@ -154,19 +161,23 @@ export default function Pond() {
     let frame = 0;
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = window.innerWidth;
       h = window.innerHeight;
+      // Low-resolution backing store, stretched to full size by CSS. Device
+      // pixel ratio is deliberately ignored: chunky pixels are the point.
       for (const c of [canvas, back]) {
-        c.width = Math.round(w * dpr);
-        c.height = Math.round(h * dpr);
+        c.width = Math.ceil(w / PIXEL);
+        c.height = Math.ceil(h / PIXEL);
       }
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Draw in CSS-pixel coordinates; the transform maps them into the buffer.
+      ctx.setTransform(1 / PIXEL, 0, 0, 1 / PIXEL, 0, 0);
+      bctx.setTransform(1 / PIXEL, 0, 0, 1 / PIXEL, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      bctx.imageSmoothingEnabled = false;
 
-      koi = Array.from({ length: Math.max(7, Math.min(16, Math.round((w * h) / 110000))) }, () =>
+      koi = Array.from({ length: Math.max(6, Math.min(13, Math.round((w * h) / 140000))) }, () =>
         makeKoi(w, h, true),
       );
 
@@ -178,7 +189,7 @@ export default function Pond() {
         return {
           x: (left ? inset : w - inset) + (Math.random() - 0.5) * 80,
           y: Math.random() * h,
-          r: 46 + Math.random() * 54,
+          r: 58 + Math.random() * 62,
           rot: Math.random() * Math.PI * 2,
           flower: Math.random() < 0.4,
         };
@@ -364,6 +375,7 @@ export default function Pond() {
       if (frame % SLOW_EVERY === 0) drawBack();
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(back, 0, 0);
       ctx.restore();
       for (const s of schools) drawSchool(s);
