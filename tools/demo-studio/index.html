@@ -56,6 +56,8 @@
       let atoms = []; // timeline of reveal events
       let zooms = []; // {from,to,rect}
       let total = 0;
+      let scrollPos = 0; // eased, so new lines slide in rather than snap
+      let lastT = 0;
 
       const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
       const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -65,7 +67,6 @@
         zooms = [];
         let t = TITLE_T;
         for (const step of S.steps) {
-          const startedAt = t;
           // Typing, one character at a time.
           for (let i = 0; i < step.cmd.length; i++) {
             atoms.push({ t, kind: 'char', text: step.cmd[i] });
@@ -73,19 +74,29 @@
           }
           atoms.push({ t, kind: 'commit' });
           t += 0.28;
+          let hintAt = null;
           if (step.hint) {
+            hintAt = t;
             atoms.push({ t, kind: 'hint', text: step.hint });
             t += 0.42;
           }
+          let firstOutAt = null;
           for (const line of step.out) {
+            if (firstOutAt === null) firstOutAt = t;
             atoms.push({ t, kind: 'out', text: line });
             t += LINE_T;
           }
           t += 0.75; // beat between commands
 
-          if (step.zoom) {
-            // Cursorful pushes in around the action and eases back out.
-            zooms.push({ from: startedAt + step.cmd.length * CPS * 0.55, to: t - 0.25 });
+          const anchor = hintAt !== null ? hintAt : firstOutAt;
+          if (step.zoom && anchor !== null) {
+            /*
+             * Push in on the translation itself, not the whole step. Holding a
+             * zoom across every command is what made it feel restless; this is
+             * a short, deliberate move on the moment polysh recognises a
+             * foreign command, then straight back out.
+             */
+            zooms.push({ from: anchor - 0.15, to: anchor + 1.3 });
           }
         }
         total = t + TAIL_T;
@@ -114,25 +125,40 @@
 
       // ---------- painting ----------
 
+      /*
+       * The wash is drawn tiny and scaled up with smoothing, which is a blur
+       * for free. Doing it with ctx.filter = 'blur(70px)' over four
+       * full-canvas gradients cost so much that the render loop fell to
+       * 13.6fps while recording.
+       */
+      const BW = 64;
+      const BH = 36;
+      const bg = document.createElement('canvas');
+      bg.width = BW;
+      bg.height = BH;
+      const bgx = bg.getContext('2d');
+
       function paintBackdrop(t) {
-        ctx.save();
-        ctx.fillStyle = S.backdrop[0];
-        ctx.fillRect(0, 0, W, H);
-        ctx.globalCompositeOperation = 'lighter';
-        // Blurred blobs drifting slowly: the "wallpaper" behind the window.
-        ctx.filter = 'blur(70px)';
+        bgx.globalCompositeOperation = 'source-over';
+        bgx.fillStyle = S.backdrop[0];
+        bgx.fillRect(0, 0, BW, BH);
+        bgx.globalCompositeOperation = 'lighter';
         S.backdrop.forEach((col, i) => {
           const a = t * 0.12 + i * 1.9;
-          const x = W * (0.5 + 0.42 * Math.cos(a + i));
-          const y = H * (0.5 + 0.46 * Math.sin(a * 0.8 + i * 1.3));
-          const g = ctx.createRadialGradient(x, y, 10, x, y, 620);
+          const x = BW * (0.5 + 0.42 * Math.cos(a + i));
+          const y = BH * (0.5 + 0.46 * Math.sin(a * 0.8 + i * 1.3));
+          const g = bgx.createRadialGradient(x, y, 0.5, x, y, BW * 0.5);
           g.addColorStop(0, col);
           g.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = g;
-          ctx.fillRect(0, 0, W, H);
+          bgx.fillStyle = g;
+          bgx.fillRect(0, 0, BW, BH);
         });
-        ctx.filter = 'none';
-        ctx.globalCompositeOperation = 'source-over';
+        bgx.globalCompositeOperation = 'source-over';
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(bg, 0, 0, W, H);
         ctx.restore();
       }
 
@@ -146,60 +172,84 @@
         c.closePath();
       }
 
-      /** The terminal window, drawn in its own coordinate space. */
-      function paintWindow(t) {
-        /* Inset generously: the window needs room on both sides or any zoom
-           immediately crops the first character off every line. */
-        const pad = 142;
-        const x = pad;
-        const y = 64;
-        const w = W - pad * 2;
-        const h = H - 136;
-        const r = 14;
+      /*
+       * Window chrome is identical every frame, and its drop shadow is one of
+       * the most expensive things on the canvas, so it is rendered once and
+       * blitted. Only the session text is drawn per frame.
+       */
+      const WIN = { x: 142, y: 64, w: W - 284, h: H - 136, r: 14 };
+      let chrome = null;
 
-        ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 48;
-        ctx.shadowOffsetY = 20;
-        roundRect(ctx, x, y, w, h, r);
-        ctx.fillStyle = '#0f1419';
-        ctx.fill();
-        ctx.restore();
+      function buildChrome() {
+        chrome = document.createElement('canvas');
+        chrome.width = W;
+        chrome.height = H;
+        const c = chrome.getContext('2d');
+        const { x, y, w, h, r } = WIN;
+
+        c.save();
+        c.shadowColor = 'rgba(0,0,0,0.5)';
+        c.shadowBlur = 48;
+        c.shadowOffsetY = 20;
+        roundRect(c, x, y, w, h, r);
+        c.fillStyle = '#0f1419';
+        c.fill();
+        c.restore();
+
+        c.save();
+        roundRect(c, x, y, w, h, r);
+        c.clip();
+        c.fillStyle = '#161c23';
+        c.fillRect(x, y, w, 36);
+        ['#ff5f57', '#febc2e', '#28c840'].forEach((col, i) => {
+          c.fillStyle = col;
+          c.beginPath();
+          c.arc(x + 20 + i * 18, y + 18, 5.5, 0, Math.PI * 2);
+          c.fill();
+        });
+        c.fillStyle = 'rgba(207,216,227,0.55)';
+        c.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+        c.textAlign = 'center';
+        c.fillText(`${S.title} — ${S.cwd}`, x + w / 2, y + 22);
+        c.restore();
+      }
+
+      function paintWindow(t) {
+        const { x, y, w, h, r } = WIN;
+        if (!chrome) buildChrome();
+        ctx.drawImage(chrome, 0, 0);
 
         ctx.save();
         roundRect(ctx, x, y, w, h, r);
         ctx.clip();
 
-        // Title bar with traffic lights.
-        ctx.fillStyle = '#161c23';
-        ctx.fillRect(x, y, w, 36);
-        ['#ff5f57', '#febc2e', '#28c840'].forEach((col, i) => {
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.arc(x + 20 + i * 18, y + 18, 5.5, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        ctx.fillStyle = 'rgba(207,216,227,0.55)';
-        ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${S.title} — ${S.cwd}`, x + w / 2, y + 22);
-        ctx.textAlign = 'left';
-
-        // Session body.
         const { lines, typing, committed } = stateAt(t);
         const FS = 15;
         const LH = 23;
         ctx.font = `${FS}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+        ctx.textAlign = 'left';
         const bodyTop = y + 36 + 18;
         const bodyH = h - 36 - 28;
         const maxLines = Math.floor(bodyH / LH);
 
         const render = lines.slice();
         if (typing || !committed) render.push({ kind: 'typing', text: typing });
-        const shown = render.slice(Math.max(0, render.length - maxLines));
+
+        // Ease the scroll so the buffer glides; snapping a whole line at a
+        // time is a big part of what read as low frame rate.
+        const target = Math.max(0, render.length - maxLines);
+        const dt = Math.max(0, Math.min(0.1, t - lastT));
+        lastT = t;
+        scrollPos += (target - scrollPos) * Math.min(1, dt * 10);
+        if (Math.abs(target - scrollPos) < 0.01) scrollPos = target;
+
+        const first = Math.floor(scrollPos);
+        const frac = scrollPos - first;
+        const shown = render.slice(first, first + maxLines + 1);
 
         shown.forEach((ln, i) => {
-          const ty = bodyTop + i * LH;
+          const ty = bodyTop + (i - frac) * LH;
+          if (ty < bodyTop - LH || ty > bodyTop + bodyH) return;
           let tx = x + 22;
           if (ln.kind === 'cmd' || ln.kind === 'typing') {
             ctx.fillStyle = S.accent2;
@@ -222,7 +272,7 @@
         });
 
         ctx.restore();
-        return { x, y, w, h };
+        return WIN;
       }
 
       function paintTitle(t) {
@@ -252,8 +302,8 @@
       function cameraAt(t) {
         let z = 0;
         for (const s of zooms) {
-          const inT = 0.55;
-          const outT = 0.65;
+          const inT = 0.7;
+          const outT = 0.8;
           if (t < s.from - inT || t > s.to + outT) continue;
           if (t < s.from) z = Math.max(z, ease(clamp01((t - (s.from - inT)) / inT)));
           else if (t <= s.to) z = 1;
@@ -272,7 +322,7 @@
          * left-of-centre focus threw the start of every line outside the
          * frame, which reads as broken rather than cinematic.
          */
-        const scale = 1 + 0.26 * z;
+        const scale = 1 + 0.17 * z;
         const fx = W * 0.5;
         const fy = H * 0.52;
         ctx.save();
@@ -292,11 +342,19 @@
         S = await res.json();
         buildTimeline();
 
-        const stream = canvas.captureStream(30);
+        /*
+         * captureStream(fps) leaves frame production to the compositor, which
+         * under-delivers badly when the page is not on a real display: the
+         * first export measured 9.4fps out of a 61fps render. captureStream(0)
+         * plus an explicit requestFrame() after every draw pins exactly one
+         * encoded frame per painted frame.
+         */
+        const stream = canvas.captureStream(0);
+        const track = stream.getVideoTracks()[0];
         const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m =>
           MediaRecorder.isTypeSupported(m),
         );
-        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 });
         const chunks = [];
         rec.ondataavailable = e => e.data.size && chunks.push(e.data);
 
@@ -316,16 +374,20 @@
 
         rec.start();
         const t0 = performance.now();
+        let painted = 0;
         await new Promise(resolve => {
           const tick = () => {
             const t = (performance.now() - t0) / 1000;
             frame(Math.min(t, total));
+            track.requestFrame();
+            painted++;
             status.textContent = `recording ${t.toFixed(1)} / ${total.toFixed(1)}s`;
             if (t < total) requestAnimationFrame(tick);
             else resolve();
           };
           requestAnimationFrame(tick);
         });
+        window.__paintedFps = +(painted / ((performance.now() - t0) / 1000)).toFixed(1);
         rec.stop();
         await done;
       }
@@ -333,6 +395,9 @@
       window.__done = false;
       window.__start = () => {
         window.__done = false;
+        scrollPos = 0;
+        lastT = 0;
+        chrome = null;
         run();
         return 'started';
       };

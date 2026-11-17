@@ -25,13 +25,13 @@
         "2026-11-17  10:50 AM                36 README.md",
         "2026-11-17  10:50 AM    <DIR>          src"
       ],
-      "zoom": false
+      "zoom": true
     },
     {
       "cmd": "polysh -c \"touch notes.txt\"",
       "hint": "→ type nul >> \"notes.txt\"   (POSIX sh → Windows cmd)",
       "out": [],
-      "zoom": true
+      "zoom": false
     },
     {
       "cmd": "polysh -c \"cat README.md\"",
@@ -50,7 +50,7 @@
         "ls -al",
         "(Windows cmd → POSIX sh)"
       ],
-      "zoom": true
+      "zoom": false
     },
     {
       "cmd": "polysh -n --to powershell \"rm -rf build\"",
